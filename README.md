@@ -15,10 +15,10 @@ The goal: make “agentic work” feel like a product, not a terminal.
 
 Knowledge workers don’t want to learn a CLI, fight config sprawl, or rebuild the same workflows in every repo.
 OpenWork is designed to be:
-- **Extensible**: skills and workflows are installable modules.
+- **Extensible**: skill and opencode plugins are installable modules.
 - **Auditable**: show what happened, when, and why.
-- **Permissioned**: explicit user approval for risky actions.
-- **Portable**: keep logic in prompts/skills, not bespoke code.
+- **Permissioned**: access to privileged flows.
+- **Local/Remote**: OpenWork works locally as well as can connect to remote servers.
 
 ## What’s Included (v0.1)
 
