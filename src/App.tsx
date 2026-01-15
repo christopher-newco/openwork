@@ -132,6 +132,86 @@ type PendingPermission = ApiPermissionRequest & {
   receivedAt: number;
 };
 
+type ModelRef = {
+  providerID: string;
+  modelID: string;
+};
+
+type ModelOption = ModelRef & {
+  label: string;
+  description: string;
+  recommended?: boolean;
+};
+
+const MODEL_PREF_KEY = "openwork.defaultModel";
+const ZEN_PROVIDER_ID = "opencode";
+const ZEN_PROVIDER_LABEL = "Zen";
+
+const DEFAULT_MODEL: ModelRef = {
+  providerID: ZEN_PROVIDER_ID,
+  modelID: "gpt-5-nano",
+};
+
+const ZEN_MODEL_OPTIONS: ModelOption[] = [
+  {
+    providerID: ZEN_PROVIDER_ID,
+    modelID: "gpt-5-nano",
+    label: "Zen · GPT-5 Nano",
+    description: "Fast, free, and works out of the box.",
+    recommended: true,
+  },
+  {
+    providerID: ZEN_PROVIDER_ID,
+    modelID: "big-pickle",
+    label: "Zen · Big Pickle",
+    description: "Free Zen model.",
+  },
+  {
+    providerID: ZEN_PROVIDER_ID,
+    modelID: "glm-4.7-free",
+    label: "Zen · GLM 4.7 Free",
+    description: "Free Zen model.",
+  },
+  {
+    providerID: ZEN_PROVIDER_ID,
+    modelID: "grok-code",
+    label: "Zen · Grok Code",
+    description: "Free Zen model.",
+  },
+  {
+    providerID: ZEN_PROVIDER_ID,
+    modelID: "minimax-m2.1-free",
+    label: "Zen · MiniMax M2.1 Free",
+    description: "Free Zen model.",
+  },
+];
+
+function formatModelRef(model: ModelRef) {
+  return `${model.providerID}/${model.modelID}`;
+}
+
+function parseModelRef(raw: string | null): ModelRef | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const [providerID, ...rest] = trimmed.split("/");
+  if (!providerID || rest.length === 0) return null;
+  return { providerID, modelID: rest.join("/") };
+}
+
+function modelEquals(a: ModelRef, b: ModelRef) {
+  return a.providerID === b.providerID && a.modelID === b.modelID;
+}
+
+function formatModelLabel(model: ModelRef) {
+  if (model.providerID === ZEN_PROVIDER_ID) {
+    const match = ZEN_MODEL_OPTIONS.find((opt) => opt.modelID === model.modelID);
+    return match?.label ?? `${ZEN_PROVIDER_LABEL} · ${model.modelID}`;
+  }
+
+  return `${model.providerID} · ${model.modelID}`;
+}
+
 const CURATED_PACKAGES: CuratedPackage[] = [
   {
     name: "OpenPackage Essentials",
@@ -409,6 +489,29 @@ function normalizeSessionStatus(status: unknown) {
   return "idle";
 }
 
+function modelFromUserMessage(info: Message): ModelRef | null {
+  if (!info || typeof info !== "object") return null;
+  if ((info as any).role !== "user") return null;
+
+  const model = (info as any).model as unknown;
+  if (!model || typeof model !== "object") return null;
+
+  const providerID = (model as any).providerID;
+  const modelID = (model as any).modelID;
+
+  if (typeof providerID !== "string" || typeof modelID !== "string") return null;
+  return { providerID, modelID };
+}
+
+function lastUserModelFromMessages(list: MessageWithParts[]): ModelRef | null {
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    const model = modelFromUserMessage(list[i]?.info);
+    if (model) return model;
+  }
+
+  return null;
+}
+
 export default function App() {
   const [view, setView] = createSignal<View>("onboarding");
   const [mode, setMode] = createSignal<Mode | null>(null);
@@ -465,6 +568,12 @@ export default function App() {
 
   const [events, setEvents] = createSignal<OpencodeEvent[]>([]);
   const [developerMode, setDeveloperMode] = createSignal(false);
+
+  const [defaultModel, setDefaultModel] = createSignal<ModelRef>(DEFAULT_MODEL);
+  const [modelPickerOpen, setModelPickerOpen] = createSignal(false);
+  const [modelPickerTarget, setModelPickerTarget] = createSignal<"session" | "default">("session");
+  const [sessionModelOverrideById, setSessionModelOverrideById] = createSignal<Record<string, ModelRef>>({});
+  const [sessionModelById, setSessionModelById] = createSignal<Record<string, ModelRef>>({});
 
   const [busy, setBusy] = createSignal(false);
   const [busyLabel, setBusyLabel] = createSignal<string | null>(null);
@@ -583,6 +692,55 @@ export default function App() {
     if (!id) return "idle";
     return sessionStatusById()[id] ?? "idle";
   });
+
+  const selectedSessionModel = createMemo<ModelRef>(() => {
+    const id = selectedSessionId();
+    if (!id) return defaultModel();
+
+    const override = sessionModelOverrideById()[id];
+    if (override) return override;
+
+    const known = sessionModelById()[id];
+    if (known) return known;
+
+    const fromMessages = lastUserModelFromMessages(messages());
+    if (fromMessages) return fromMessages;
+
+    return defaultModel();
+  });
+
+  const selectedSessionModelLabel = createMemo(() => formatModelLabel(selectedSessionModel()));
+
+  const modelPickerCurrent = createMemo(() =>
+    modelPickerTarget() === "default" ? defaultModel() : selectedSessionModel(),
+  );
+
+  function openSessionModelPicker() {
+    setModelPickerTarget("session");
+    setModelPickerOpen(true);
+  }
+
+  function openDefaultModelPicker() {
+    setModelPickerTarget("default");
+    setModelPickerOpen(true);
+  }
+
+  function applyModelSelection(next: ModelRef) {
+    if (modelPickerTarget() === "default") {
+      setDefaultModel(next);
+      setModelPickerOpen(false);
+      return;
+    }
+
+    const id = selectedSessionId();
+    if (!id) {
+      setModelPickerOpen(false);
+      return;
+    }
+
+    setSessionModelOverrideById((current) => ({ ...current, [id]: next }));
+    setModelPickerOpen(false);
+  }
 
   const activePermission = createMemo(() => {
     const id = selectedSessionId();
@@ -781,6 +939,21 @@ export default function App() {
     const msgs = unwrap(await c.session.messages({ sessionID }));
     setMessages(msgs);
 
+    const model = lastUserModelFromMessages(msgs);
+    if (model) {
+      setSessionModelById((current) => ({
+        ...current,
+        [sessionID]: model,
+      }));
+
+      setSessionModelOverrideById((current) => {
+        if (!current[sessionID]) return current;
+        const copy = { ...current };
+        delete copy[sessionID];
+        return copy;
+      });
+    }
+
     try {
       setTodos(unwrap(await c.session.todo({ sessionID })));
     } catch {
@@ -833,12 +1006,28 @@ export default function App() {
     try {
       setLastPromptSent(content);
       setPrompt("");
+
+      const model = selectedSessionModel();
+
       unwrap(
         await c.session.prompt({
           sessionID,
+          model,
           parts: [{ type: "text", text: content }],
         }),
       );
+
+      setSessionModelById((current) => ({
+        ...current,
+        [sessionID]: model,
+      }));
+
+      setSessionModelOverrideById((current) => {
+        if (!current[sessionID]) return current;
+        const copy = { ...current };
+        delete copy[sessionID];
+        return copy;
+      });
 
       const msgs = unwrap(await c.session.messages({ sessionID }));
       setMessages(msgs);
@@ -908,12 +1097,20 @@ export default function App() {
       await selectSession(session.id);
       setView("session");
 
+      const model = defaultModel();
+
       unwrap(
         await c.session.prompt({
           sessionID: session.id,
+          model,
           parts: [{ type: "text", text: template.prompt }],
         }),
       );
+
+      setSessionModelById((current) => ({
+        ...current,
+        [session.id]: model,
+      }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
@@ -1232,6 +1429,19 @@ export default function App() {
             setTemplates(parsed as Template[]);
           }
         }
+
+        const storedDefaultModel = window.localStorage.getItem(MODEL_PREF_KEY);
+        const parsedDefaultModel = parseModelRef(storedDefaultModel);
+        if (parsedDefaultModel) {
+          setDefaultModel(parsedDefaultModel);
+        } else {
+          setDefaultModel(DEFAULT_MODEL);
+          try {
+            window.localStorage.setItem(MODEL_PREF_KEY, formatModelRef(DEFAULT_MODEL));
+          } catch {
+            // ignore
+          }
+        }
       } catch {
         // ignore
       }
@@ -1349,6 +1559,15 @@ export default function App() {
   });
 
   createEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(MODEL_PREF_KEY, formatModelRef(defaultModel()));
+    } catch {
+      // ignore
+    }
+  });
+
+  createEffect(() => {
     const c = client();
     if (!c) return;
 
@@ -1426,6 +1645,22 @@ export default function App() {
               const record = event.properties as Record<string, unknown>;
               if (record.info && typeof record.info === "object") {
                 const info = record.info as Message;
+
+                const model = modelFromUserMessage(info);
+                if (model) {
+                  setSessionModelById((current) => ({
+                    ...current,
+                    [info.sessionID]: model,
+                  }));
+
+                  setSessionModelOverrideById((current) => {
+                    if (!current[info.sessionID]) return current;
+                    const copy = { ...current };
+                    delete copy[info.sessionID];
+                    return copy;
+                  });
+                }
+
                 if (selectedSessionId() && info.sessionID === selectedSessionId()) {
                   setMessages((current) => upsertMessage(current, info));
                 }
@@ -2670,6 +2905,26 @@ export default function App() {
             </div>
 
             <div class="bg-zinc-900/30 border border-zinc-800/50 rounded-2xl p-5 space-y-3">
+              <div class="text-sm font-medium text-white">Model</div>
+              <div class="text-xs text-zinc-500">Default model for new sessions.</div>
+
+              <div class="flex items-center justify-between bg-zinc-950 p-3 rounded-xl border border-zinc-800 gap-3">
+                <div class="min-w-0">
+                  <div class="text-sm text-zinc-200 truncate">{formatModelLabel(defaultModel())}</div>
+                  <div class="text-xs text-zinc-600 font-mono truncate">{formatModelRef(defaultModel())}</div>
+                </div>
+                <Button
+                  variant="outline"
+                  class="text-xs h-8 py-0 px-3 shrink-0"
+                  onClick={openDefaultModelPicker}
+                  disabled={busy()}
+                >
+                  Change
+                </Button>
+              </div>
+            </div>
+
+            <div class="bg-zinc-900/30 border border-zinc-800/50 rounded-2xl p-5 space-y-3">
               <div class="text-sm font-medium text-white">Startup</div>
 
               <div class="flex items-center justify-between bg-zinc-950 p-3 rounded-xl border border-zinc-800">
@@ -2962,7 +3217,16 @@ export default function App() {
               </div>
             </div>
 
-            <div class="flex gap-2">
+            <div class="flex gap-2 items-center">
+              <button
+                class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-900/60 border border-zinc-800 text-xs text-zinc-200 hover:bg-zinc-900/80 transition-colors max-w-[220px]"
+                onClick={openSessionModelPicker}
+                title="Change model"
+              >
+                <span class="truncate">{selectedSessionModelLabel()}</span>
+                <ChevronRight size={14} class="text-zinc-500" />
+              </button>
+
               <Button variant="ghost" class="text-xs" onClick={openTemplateModal} disabled={busy()}>
                 <FileText size={14} />
               </Button>
@@ -3235,6 +3499,82 @@ export default function App() {
             <DashboardView />
           </Match>
         </Switch>
+      </Show>
+
+      <Show when={modelPickerOpen()}>
+        <div class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div class="bg-zinc-900 border border-zinc-800/70 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden">
+            <div class="p-6">
+              <div class="flex items-start justify-between gap-4">
+                <div>
+                  <h3 class="text-lg font-semibold text-white">
+                    {modelPickerTarget() === "default" ? "Default model" : "Model"}
+                  </h3>
+                  <p class="text-sm text-zinc-400 mt-1">
+                    Zen models work without setup. This selection {modelPickerTarget() === "default"
+                      ? "will be used for new sessions"
+                      : "applies to your next message"}.
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  class="!p-2 rounded-full"
+                  onClick={() => setModelPickerOpen(false)}
+                >
+                  <X size={16} />
+                </Button>
+              </div>
+
+              <div class="mt-6 space-y-2">
+                <For each={ZEN_MODEL_OPTIONS}>
+                  {(opt) => {
+                    const active = () => modelEquals(modelPickerCurrent(), opt);
+
+                    return (
+                      <button
+                        class={`w-full text-left rounded-2xl border px-4 py-3 transition-colors ${
+                          active()
+                            ? "border-white/20 bg-white/5"
+                            : "border-zinc-800/70 bg-zinc-950/40 hover:bg-zinc-950/60"
+                        }`}
+                        onClick={() => applyModelSelection(opt)}
+                      >
+                        <div class="flex items-start justify-between gap-3">
+                          <div>
+                            <div class="text-sm font-medium text-zinc-100 flex items-center gap-2">
+                              {opt.label}
+                              <Show when={opt.recommended}>
+                                <span class="text-[10px] uppercase tracking-wide text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                                  Recommended
+                                </span>
+                              </Show>
+                            </div>
+                            <div class="text-xs text-zinc-500 mt-1">{opt.description}</div>
+                            <div class="text-[11px] text-zinc-600 font-mono mt-2">
+                              {formatModelRef(opt)}
+                            </div>
+                          </div>
+
+                          <div class="pt-0.5 text-zinc-500">
+                            <Show when={active()} fallback={<Circle size={14} />}>
+                              <CheckCircle2 size={14} class="text-emerald-400" />
+                            </Show>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  }}
+                </For>
+              </div>
+
+              <div class="mt-6 flex justify-end">
+                <Button variant="outline" onClick={() => setModelPickerOpen(false)}>
+                  Done
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
       </Show>
 
       <Show when={templateModalOpen()}>
