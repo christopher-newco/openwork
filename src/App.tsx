@@ -482,7 +482,6 @@ export default function App() {
 
   const [appVersion, setAppVersion] = createSignal<string | null>(null);
 
-  const [updateChannel, setUpdateChannel] = createSignal<"stable" | "beta">("stable");
   const [updateAutoCheck, setUpdateAutoCheck] = createSignal(true);
 
   const [updateEnv, setUpdateEnv] = createSignal<UpdaterEnvironment | null>(null);
@@ -684,7 +683,6 @@ export default function App() {
 
     try {
       const update = (await check({
-        target: updateChannel() === "beta" ? "beta" : "stable",
         timeout: 8_000,
       })) as unknown as UpdateHandle | null;
       const checkedAt = Date.now();
@@ -1375,11 +1373,6 @@ export default function App() {
           }
         }
 
-        const storedUpdateChannel = window.localStorage.getItem("openwork.updateChannel");
-        if (storedUpdateChannel === "stable" || storedUpdateChannel === "beta") {
-          setUpdateChannel(storedUpdateChannel);
-        }
-
         const storedUpdateAutoCheck = window.localStorage.getItem("openwork.updateAutoCheck");
         if (storedUpdateAutoCheck === "0" || storedUpdateAutoCheck === "1") {
           setUpdateAutoCheck(storedUpdateAutoCheck === "1");
@@ -1518,15 +1511,6 @@ export default function App() {
     if (typeof window === "undefined") return;
     try {
       window.localStorage.setItem("openwork.templates", JSON.stringify(templates()));
-    } catch {
-      // ignore
-    }
-  });
-
-  createEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      window.localStorage.setItem("openwork.updateChannel", updateChannel());
     } catch {
       // ignore
     }
@@ -2776,49 +2760,6 @@ export default function App() {
                     when={updateEnv() && !updateEnv()!.supported}
                     fallback={
                       <>
-                        <div class="flex items-center justify-between bg-zinc-950 p-3 rounded-xl border border-zinc-800">
-                          <div class="space-y-0.5">
-                            <div class="text-sm text-white">Channel</div>
-                            <div class="text-xs text-zinc-600">{updateChannel() === "stable" ? "Stable" : "Beta"}</div>
-                          </div>
-                          <div class="flex items-center gap-2">
-                            <button
-                              class={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-                                updateChannel() === "stable"
-                                  ? "bg-white/10 text-white border-white/20"
-                                  : "text-zinc-500 border-zinc-800 hover:text-white"
-                              }`}
-                              onClick={() => {
-                                setUpdateChannel("stable");
-                                setPendingUpdate(null);
-                                const s = updateStatus();
-                                if (s.state !== "idle") {
-                                  setUpdateStatus({ state: "idle", lastCheckedAt: null });
-                                }
-                              }}
-                            >
-                              Stable
-                            </button>
-                            <button
-                              class={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-                                updateChannel() === "beta"
-                                  ? "bg-white/10 text-white border-white/20"
-                                  : "text-zinc-500 border-zinc-800 hover:text-white"
-                              }`}
-                              onClick={() => {
-                                setUpdateChannel("beta");
-                                setPendingUpdate(null);
-                                const s = updateStatus();
-                                if (s.state !== "idle") {
-                                  setUpdateStatus({ state: "idle", lastCheckedAt: null });
-                                }
-                              }}
-                            >
-                              Beta
-                            </button>
-                          </div>
-                        </div>
-
                         <div class="flex items-center justify-between bg-zinc-950 p-3 rounded-xl border border-zinc-800">
                           <div class="space-y-0.5">
                             <div class="text-sm text-white">Automatic checks</div>
