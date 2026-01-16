@@ -18,8 +18,14 @@ export type EngineDoctorResult = {
   notes: string[];
 };
 
-export async function engineStart(projectDir: string): Promise<EngineInfo> {
-  return invoke<EngineInfo>("engine_start", { projectDir });
+export async function engineStart(
+  projectDir: string,
+  options?: { preferSidecar?: boolean },
+): Promise<EngineInfo> {
+  return invoke<EngineInfo>("engine_start", {
+    projectDir,
+    preferSidecar: options?.preferSidecar ?? false,
+  });
 }
 
 export async function engineStop(): Promise<EngineInfo> {

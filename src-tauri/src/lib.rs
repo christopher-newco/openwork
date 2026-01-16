@@ -159,6 +159,19 @@ fn opencode_supports_serve(program: &OsStr) -> bool {
 fn resolve_opencode_executable() -> (Option<PathBuf>, bool, Vec<String>) {
   let mut notes = Vec::new();
 
+  // Prefer explicit override.
+  if let Ok(custom) = env::var("OPENCODE_BIN_PATH") {
+    let custom = custom.trim();
+    if !custom.is_empty() {
+      let candidate = PathBuf::from(custom);
+      if candidate.is_file() {
+        notes.push(format!("Using OPENCODE_BIN_PATH: {}", candidate.display()));
+        return (Some(candidate), false, notes);
+      }
+      notes.push(format!("OPENCODE_BIN_PATH set but missing: {}", candidate.display()));
+    }
+  }
+
   if let Some(path) = resolve_in_path(OPENCODE_EXECUTABLE) {
     notes.push(format!("Found in PATH: {}", path.display()));
     return (Some(path), true, notes);
@@ -360,7 +373,11 @@ fn engine_install() -> Result<ExecResult, String> {
 }
 
 #[tauri::command]
-fn engine_start(manager: State<EngineManager>, project_dir: String) -> Result<EngineInfo, String> {
+fn engine_start(
+  manager: State<EngineManager>,
+  project_dir: String,
+  prefer_sidecar: Option<bool>,
+) -> Result<EngineInfo, String> {
   let project_dir = project_dir.trim().to_string();
   if project_dir.is_empty() {
     return Err("projectDir is required".to_string());
@@ -374,7 +391,39 @@ fn engine_start(manager: State<EngineManager>, project_dir: String) -> Result<En
   // Stop any existing engine first.
   EngineManager::stop_locked(&mut state);
 
-  let (program, _in_path, notes) = resolve_opencode_executable();
+  let mut notes = Vec::new();
+
+  let resolved_sidecar = if prefer_sidecar.unwrap_or(false) {
+    #[cfg(not(windows))]
+    {
+      // Best-effort: if we eventually bundle a binary, it will likely live here.
+      let candidate = PathBuf::from("src-tauri/sidecars").join(OPENCODE_EXECUTABLE);
+      if candidate.is_file() {
+        notes.push(format!("Using bundled sidecar: {}", candidate.display()));
+        Some(candidate)
+      } else {
+        notes.push(format!(
+          "Sidecar requested but missing: {}",
+          candidate.display()
+        ));
+        None
+      }
+    }
+    #[cfg(windows)]
+    {
+      notes.push("Sidecar requested but unsupported on Windows".to_string());
+      None
+    }
+  } else {
+    None
+  };
+
+  let (program, _in_path, more_notes) = match resolved_sidecar {
+    Some(path) => (Some(path), false, Vec::new()),
+    None => resolve_opencode_executable(),
+  };
+
+  notes.extend(more_notes);
   let Some(program) = program else {
     let notes_text = notes.join("\n");
     return Err(format!(

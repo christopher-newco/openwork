@@ -16,6 +16,7 @@ import type {
   Message,
   Part,
   PermissionRequest as ApiPermissionRequest,
+  Provider,
   Session,
 } from "@opencode-ai/sdk/v2/client";
 
@@ -67,8 +68,39 @@ import {
 
 type Client = ReturnType<typeof createClient>;
 
+type PlaceholderAssistantMessage = {
+  id: string;
+  sessionID: string;
+  role: "assistant";
+  time: {
+    created: number;
+    completed?: number;
+  };
+  parentID: string;
+  modelID: string;
+  providerID: string;
+  mode: string;
+  agent: string;
+  path: {
+    cwd: string;
+    root: string;
+  };
+  cost: number;
+  tokens: {
+    input: number;
+    output: number;
+    reasoning: number;
+    cache: {
+      read: number;
+      write: number;
+    };
+  };
+};
+
+type MessageInfo = Message | PlaceholderAssistantMessage;
+
 type MessageWithParts = {
-  info: Message;
+  info: MessageInfo;
   parts: Part[];
 };
 
@@ -137,54 +169,23 @@ type ModelRef = {
   modelID: string;
 };
 
-type ModelOption = ModelRef & {
-  label: string;
-  description: string;
-  recommended?: boolean;
+type ModelOption = {
+  providerID: string;
+  modelID: string;
+  title: string;
+  description?: string;
+  footer?: string;
+  disabled?: boolean;
 };
 
 const MODEL_PREF_KEY = "openwork.defaultModel";
-const ZEN_PROVIDER_ID = "opencode";
-const ZEN_PROVIDER_LABEL = "Zen";
+const THINKING_PREF_KEY = "openwork.showThinking";
+const VARIANT_PREF_KEY = "openwork.modelVariant";
 
 const DEFAULT_MODEL: ModelRef = {
-  providerID: ZEN_PROVIDER_ID,
+  providerID: "opencode",
   modelID: "gpt-5-nano",
 };
-
-const ZEN_MODEL_OPTIONS: ModelOption[] = [
-  {
-    providerID: ZEN_PROVIDER_ID,
-    modelID: "gpt-5-nano",
-    label: "Zen · GPT-5 Nano",
-    description: "Fast, free, and works out of the box.",
-    recommended: true,
-  },
-  {
-    providerID: ZEN_PROVIDER_ID,
-    modelID: "big-pickle",
-    label: "Zen · Big Pickle",
-    description: "Free Zen model.",
-  },
-  {
-    providerID: ZEN_PROVIDER_ID,
-    modelID: "glm-4.7-free",
-    label: "Zen · GLM 4.7 Free",
-    description: "Free Zen model.",
-  },
-  {
-    providerID: ZEN_PROVIDER_ID,
-    modelID: "grok-code",
-    label: "Zen · Grok Code",
-    description: "Free Zen model.",
-  },
-  {
-    providerID: ZEN_PROVIDER_ID,
-    modelID: "minimax-m2.1-free",
-    label: "Zen · MiniMax M2.1 Free",
-    description: "Free Zen model.",
-  },
-];
 
 function formatModelRef(model: ModelRef) {
   return `${model.providerID}/${model.modelID}`;
@@ -203,13 +204,14 @@ function modelEquals(a: ModelRef, b: ModelRef) {
   return a.providerID === b.providerID && a.modelID === b.modelID;
 }
 
-function formatModelLabel(model: ModelRef) {
-  if (model.providerID === ZEN_PROVIDER_ID) {
-    const match = ZEN_MODEL_OPTIONS.find((opt) => opt.modelID === model.modelID);
-    return match?.label ?? `${ZEN_PROVIDER_LABEL} · ${model.modelID}`;
-  }
+function formatModelLabel(model: ModelRef, providers: Provider[] = []) {
+  const provider = providers.find((p) => p.id === model.providerID);
+  const modelInfo = provider?.models?.[model.modelID];
 
-  return `${model.providerID} · ${model.modelID}`;
+  const providerLabel = provider?.name ?? model.providerID;
+  const modelLabel = modelInfo?.name ?? model.modelID;
+
+  return `${providerLabel} · ${modelLabel}`;
 }
 
 const CURATED_PACKAGES: CuratedPackage[] = [
@@ -452,7 +454,25 @@ function upsertMessage(list: MessageWithParts[], nextInfo: Message) {
 function upsertPart(list: MessageWithParts[], nextPart: Part) {
   const msgIdx = list.findIndex((m) => m.info.id === nextPart.messageID);
   if (msgIdx === -1) {
-    return list;
+    // Streaming events can arrive before we receive `message.updated`.
+    // Create a placeholder assistant message so the UI renders the part
+    // immediately, then `message.updated` will fill in the rest.
+    const placeholder: PlaceholderAssistantMessage = {
+      id: nextPart.messageID,
+      sessionID: nextPart.sessionID,
+      role: "assistant",
+      time: { created: Date.now() },
+      parentID: "",
+      modelID: "",
+      providerID: "",
+      mode: "",
+      agent: "",
+      path: { cwd: "", root: "" },
+      cost: 0,
+      tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+    };
+
+    return list.concat({ info: placeholder, parts: [nextPart] });
   }
 
   const copy = list.slice();
@@ -489,7 +509,7 @@ function normalizeSessionStatus(status: unknown) {
   return "idle";
 }
 
-function modelFromUserMessage(info: Message): ModelRef | null {
+function modelFromUserMessage(info: MessageInfo): ModelRef | null {
   if (!info || typeof info !== "object") return null;
   if ((info as any).role !== "user") return null;
 
@@ -523,6 +543,7 @@ export default function App() {
   const [engineDoctorResult, setEngineDoctorResult] = createSignal<EngineDoctorResult | null>(null);
   const [engineDoctorCheckedAt, setEngineDoctorCheckedAt] = createSignal<number | null>(null);
   const [engineInstallLogs, setEngineInstallLogs] = createSignal<string | null>(null);
+  const [engineSource, setEngineSource] = createSignal<"path" | "sidecar">("path");
 
   const [projectDir, setProjectDir] = createSignal("");
   const [authorizedDirs, setAuthorizedDirs] = createSignal<string[]>([]);
@@ -570,11 +591,17 @@ export default function App() {
   const [events, setEvents] = createSignal<OpencodeEvent[]>([]);
   const [developerMode, setDeveloperMode] = createSignal(false);
 
+  const [providers, setProviders] = createSignal<Provider[]>([]);
+  const [providerDefaults, setProviderDefaults] = createSignal<Record<string, string>>({});
+
   const [defaultModel, setDefaultModel] = createSignal<ModelRef>(DEFAULT_MODEL);
   const [modelPickerOpen, setModelPickerOpen] = createSignal(false);
   const [modelPickerTarget, setModelPickerTarget] = createSignal<"session" | "default">("session");
   const [sessionModelOverrideById, setSessionModelOverrideById] = createSignal<Record<string, ModelRef>>({});
   const [sessionModelById, setSessionModelById] = createSignal<Record<string, ModelRef>>({});
+
+  const [showThinking, setShowThinking] = createSignal(true);
+  const [modelVariant, setModelVariant] = createSignal<string | null>(null);
 
   const [busy, setBusy] = createSignal(false);
   const [busyLabel, setBusyLabel] = createSignal<string | null>(null);
@@ -710,11 +737,66 @@ export default function App() {
     return defaultModel();
   });
 
-  const selectedSessionModelLabel = createMemo(() => formatModelLabel(selectedSessionModel()));
+  const selectedSessionModelLabel = createMemo(() => formatModelLabel(selectedSessionModel(), providers()));
 
   const modelPickerCurrent = createMemo(() =>
     modelPickerTarget() === "default" ? defaultModel() : selectedSessionModel(),
   );
+
+  const modelOptions = createMemo<ModelOption[]>(() => {
+    const allProviders = providers();
+    const defaults = providerDefaults();
+
+    if (!allProviders.length) {
+      return [
+        {
+          providerID: DEFAULT_MODEL.providerID,
+          modelID: DEFAULT_MODEL.modelID,
+          title: DEFAULT_MODEL.modelID,
+          description: DEFAULT_MODEL.providerID,
+          footer: "Fallback",
+        },
+      ];
+    }
+
+    const sortedProviders = allProviders.slice().sort((a, b) => {
+      const aIsOpencode = a.id === "opencode";
+      const bIsOpencode = b.id === "opencode";
+      if (aIsOpencode !== bIsOpencode) return aIsOpencode ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    const next: ModelOption[] = [];
+
+    for (const provider of sortedProviders) {
+      const defaultModelID = defaults[provider.id];
+      const models = Object.values(provider.models ?? {}).filter((m) => m.status !== "deprecated");
+
+      models.sort((a, b) => {
+        const aFree = a.cost?.input === 0 && a.cost?.output === 0;
+        const bFree = b.cost?.input === 0 && b.cost?.output === 0;
+        if (aFree !== bFree) return aFree ? -1 : 1;
+        return (a.name ?? a.id).localeCompare(b.name ?? b.id);
+      });
+
+      for (const model of models) {
+        const footerBits: string[] = [];
+        if (defaultModelID === model.id) footerBits.push("Default");
+        if (model.cost?.input === 0 && model.cost?.output === 0) footerBits.push("Free");
+        if (model.capabilities?.reasoning) footerBits.push("Reasoning");
+
+        next.push({
+          providerID: provider.id,
+          modelID: model.id,
+          title: model.name ?? model.id,
+          description: provider.name,
+          footer: footerBits.length ? footerBits.slice(0, 2).join(" · ") : undefined,
+        });
+      }
+    }
+
+    return next;
+  });
 
   function openSessionModelPicker() {
     setModelPickerTarget("session");
@@ -819,6 +901,15 @@ export default function App() {
       await loadSessions(nextClient);
       await refreshPendingPermissions(nextClient);
 
+      try {
+        const cfg = unwrap(await nextClient.config.providers());
+        setProviders(cfg.providers);
+        setProviderDefaults(cfg.default);
+      } catch {
+        setProviders([]);
+        setProviderDefaults({});
+      }
+
       setSelectedSessionId(null);
       setMessages([]);
       setTodos([]);
@@ -877,8 +968,8 @@ export default function App() {
     setBusyStartedAt(Date.now());
 
     try {
-      const info = await engineStart(dir);
-      setEngine(info);
+       const info = await engineStart(dir, { preferSidecar: engineSource() === "sidecar" });
+       setEngine(info);
 
       if (info.baseUrl) {
         const ok = await connectToServer(info.baseUrl, info.projectDir ?? undefined);
@@ -1010,36 +1101,28 @@ export default function App() {
 
       const model = selectedSessionModel();
 
-      unwrap(
-        await c.session.prompt({
-          sessionID,
-          model,
-          parts: [{ type: "text", text: content }],
-        }),
-      );
+       await c.session.promptAsync({
+         sessionID,
+         model,
+         variant: modelVariant() ?? undefined,
+         parts: [{ type: "text", text: content }],
+       });
 
-      setSessionModelById((current) => ({
-        ...current,
-        [sessionID]: model,
-      }));
+       setSessionModelById((current) => ({
+         ...current,
+         [sessionID]: model,
+       }));
 
-      setSessionModelOverrideById((current) => {
-        if (!current[sessionID]) return current;
-        const copy = { ...current };
-        delete copy[sessionID];
-        return copy;
-      });
+       setSessionModelOverrideById((current) => {
+         if (!current[sessionID]) return current;
+         const copy = { ...current };
+         delete copy[sessionID];
+         return copy;
+       });
 
-      const msgs = unwrap(await c.session.messages({ sessionID }));
-      setMessages(msgs);
-
-      try {
-        setTodos(unwrap(await c.session.todo({ sessionID })));
-      } catch {
-        setTodos([]);
-      }
-
-      await loadSessions(c);
+       // Streaming UI is driven by SSE; do not block on fetching the full
+       // message list here.
+       await loadSessions(c).catch(() => undefined);
     } catch (e) {
       setError(e instanceof Error ? e.message : safeStringify(e));
     } finally {
@@ -1100,13 +1183,12 @@ export default function App() {
 
       const model = defaultModel();
 
-      unwrap(
-        await c.session.prompt({
-          sessionID: session.id,
-          model,
-          parts: [{ type: "text", text: template.prompt }],
-        }),
-      );
+       await c.session.promptAsync({
+         sessionID: session.id,
+         model,
+         variant: modelVariant() ?? undefined,
+         parts: [{ type: "text", text: template.prompt }],
+       });
 
       setSessionModelById((current) => ({
         ...current,
@@ -1415,6 +1497,11 @@ export default function App() {
           setProjectDir(storedProjectDir);
         }
 
+        const storedEngineSource = window.localStorage.getItem("openwork.engineSource");
+        if (storedEngineSource === "path" || storedEngineSource === "sidecar") {
+          setEngineSource(storedEngineSource);
+        }
+
         const storedAuthorized = window.localStorage.getItem("openwork.authorizedDirs");
         if (storedAuthorized) {
           const parsed = JSON.parse(storedAuthorized) as unknown;
@@ -1442,6 +1529,23 @@ export default function App() {
           } catch {
             // ignore
           }
+        }
+
+        const storedThinking = window.localStorage.getItem(THINKING_PREF_KEY);
+        if (storedThinking != null) {
+          try {
+            const parsed = JSON.parse(storedThinking);
+            if (typeof parsed === "boolean") {
+              setShowThinking(parsed);
+            }
+          } catch {
+            // ignore
+          }
+        }
+
+        const storedVariant = window.localStorage.getItem(VARIANT_PREF_KEY);
+        if (storedVariant && storedVariant.trim()) {
+          setModelVariant(storedVariant.trim());
         }
       } catch {
         // ignore
@@ -1544,6 +1648,15 @@ export default function App() {
   createEffect(() => {
     if (typeof window === "undefined") return;
     try {
+      window.localStorage.setItem("openwork.engineSource", engineSource());
+    } catch {
+      // ignore
+    }
+  });
+
+  createEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
       window.localStorage.setItem("openwork.authorizedDirs", JSON.stringify(authorizedDirs()));
     } catch {
       // ignore
@@ -1563,6 +1676,29 @@ export default function App() {
     if (typeof window === "undefined") return;
     try {
       window.localStorage.setItem(MODEL_PREF_KEY, formatModelRef(defaultModel()));
+    } catch {
+      // ignore
+    }
+  });
+
+  createEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(THINKING_PREF_KEY, JSON.stringify(showThinking()));
+    } catch {
+      // ignore
+    }
+  });
+
+  createEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const value = modelVariant();
+      if (value) {
+        window.localStorage.setItem(VARIANT_PREF_KEY, value);
+      } else {
+        window.localStorage.removeItem(VARIANT_PREF_KEY);
+      }
     } catch {
       // ignore
     }
@@ -1687,9 +1823,35 @@ export default function App() {
               const record = event.properties as Record<string, unknown>;
               if (record.part && typeof record.part === "object") {
                 const part = record.part as Part;
-                if (selectedSessionId() && part.sessionID === selectedSessionId()) {
-                  setMessages((current) => upsertPart(current, part));
-                }
+                 if (selectedSessionId() && part.sessionID === selectedSessionId()) {
+                   setMessages((current) => {
+                     const next = upsertPart(current, part);
+
+                     // Some streaming servers only send `delta` updates and keep
+                     // `part.text` as the full aggregation; others send the
+                     // full part each time. If we have a delta, apply it to the
+                     // latest text part to ensure visible streaming.
+                     if (typeof record.delta === "string" && record.delta && part.type === "text") {
+                       const msgIdx = next.findIndex((m) => m.info.id === part.messageID);
+                       if (msgIdx !== -1) {
+                         const msg = next[msgIdx];
+                         const parts = msg.parts.slice();
+                         const pIdx = parts.findIndex((p) => p.id === part.id);
+                         if (pIdx !== -1) {
+                           const currentPart = parts[pIdx] as any;
+                           if (typeof currentPart.text === "string" && currentPart.text.endsWith(record.delta) === false) {
+                             parts[pIdx] = { ...(parts[pIdx] as any), text: `${currentPart.text}${record.delta}` };
+                             const copy = next.slice();
+                             copy[msgIdx] = { ...msg, parts };
+                             return copy;
+                           }
+                         }
+                       }
+                     }
+
+                     return next;
+                   });
+                 }
               }
             }
           }
@@ -2903,15 +3065,42 @@ export default function App() {
                   </Button>
                 </Show>
               </div>
+
+              <Show when={isTauriRuntime() && mode() === "host"}>
+                <div class="pt-4 border-t border-zinc-800/60 space-y-3">
+                  <div class="text-xs text-zinc-500">Engine source</div>
+                  <div class="grid grid-cols-2 gap-2">
+                    <Button
+                      variant={engineSource() === "path" ? "secondary" : "outline"}
+                      onClick={() => setEngineSource("path")}
+                      disabled={busy()}
+                    >
+                      PATH
+                    </Button>
+                    <Button
+                      variant={engineSource() === "sidecar" ? "secondary" : "outline"}
+                      onClick={() => setEngineSource("sidecar")}
+                      disabled={busy()}
+                    >
+                      Sidecar
+                    </Button>
+                  </div>
+                  <div class="text-[11px] text-zinc-600">
+                    PATH uses your installed OpenCode (default). Sidecar will use a bundled binary when available.
+                  </div>
+                </div>
+              </Show>
             </div>
 
-            <div class="bg-zinc-900/30 border border-zinc-800/50 rounded-2xl p-5 space-y-3">
-              <div class="text-sm font-medium text-white">Model</div>
-              <div class="text-xs text-zinc-500">Default model for new sessions.</div>
+            <div class="bg-zinc-900/30 border border-zinc-800/50 rounded-2xl p-5 space-y-4">
+              <div>
+                <div class="text-sm font-medium text-white">Model</div>
+                <div class="text-xs text-zinc-500">Defaults + thinking controls for runs.</div>
+              </div>
 
               <div class="flex items-center justify-between bg-zinc-950 p-3 rounded-xl border border-zinc-800 gap-3">
                 <div class="min-w-0">
-                  <div class="text-sm text-zinc-200 truncate">{formatModelLabel(defaultModel())}</div>
+                  <div class="text-sm text-zinc-200 truncate">{formatModelLabel(defaultModel(), providers())}</div>
                   <div class="text-xs text-zinc-600 font-mono truncate">{formatModelRef(defaultModel())}</div>
                 </div>
                 <Button
@@ -2921,6 +3110,46 @@ export default function App() {
                   disabled={busy()}
                 >
                   Change
+                </Button>
+              </div>
+
+              <div class="flex items-center justify-between bg-zinc-950 p-3 rounded-xl border border-zinc-800 gap-3">
+                <div class="min-w-0">
+                  <div class="text-sm text-zinc-200">Thinking</div>
+                  <div class="text-xs text-zinc-600">Show thinking parts (Developer mode only).</div>
+                </div>
+                <Button
+                  variant="outline"
+                  class="text-xs h-8 py-0 px-3 shrink-0"
+                  onClick={() => setShowThinking((v) => !v)}
+                  disabled={busy()}
+                >
+                  {showThinking() ? "On" : "Off"}
+                </Button>
+              </div>
+
+              <div class="flex items-center justify-between bg-zinc-950 p-3 rounded-xl border border-zinc-800 gap-3">
+                <div class="min-w-0">
+                  <div class="text-sm text-zinc-200">Model variant</div>
+                  <div class="text-xs text-zinc-600 font-mono truncate">
+                    {modelVariant() ? modelVariant() : "(default)"}
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  class="text-xs h-8 py-0 px-3 shrink-0"
+                  onClick={() => {
+                    const next = window.prompt(
+                      "Model variant (provider-specific, e.g. high/max/minimal). Leave blank to clear.",
+                      modelVariant() ?? "",
+                    );
+                    if (next == null) return;
+                    const trimmed = next.trim();
+                    setModelVariant(trimmed ? trimmed : null);
+                  }}
+                  disabled={busy()}
+                >
+                  Edit
                 </Button>
               </div>
             </div>
@@ -3274,22 +3503,23 @@ export default function App() {
 
                     return (
                       <Show when={renderableParts().length > 0}>
-                        <div class={`flex ${msg.info.role === "user" ? "justify-end" : "justify-start"}`}>
+                         <div class={`flex ${(msg.info as any).role === "user" ? "justify-end" : "justify-start"}`}>
                           <div
                             class={`max-w-[85%] p-4 rounded-2xl text-sm leading-relaxed ${
-                              msg.info.role === "user"
-                                ? "bg-white text-black rounded-tr-sm shadow-xl shadow-white/5"
-                                : "bg-zinc-900 border border-zinc-800 text-zinc-200 rounded-tl-sm"
+                               (msg.info as any).role === "user"
+                                 ? "bg-white text-black rounded-tr-sm shadow-xl shadow-white/5"
+                                 : "bg-zinc-900 border border-zinc-800 text-zinc-200 rounded-tl-sm"
                             }`}
                           >
                             <For each={renderableParts()}>
                               {(p, idx) => (
                                 <div class={idx() === renderableParts().length - 1 ? "" : "mb-2"}>
-                                  <PartView
-                                    part={p}
-                                    developerMode={developerMode()}
-                                    tone={msg.info.role === "user" ? "dark" : "light"}
-                                  />
+                                    <PartView
+                                      part={p}
+                                      developerMode={developerMode()}
+                                      showThinking={showThinking()}
+                                      tone={(msg.info as any).role === "user" ? "dark" : "light"}
+                                    />
                                 </div>
                               )}
                             </For>
@@ -3512,7 +3742,7 @@ export default function App() {
                     {modelPickerTarget() === "default" ? "Default model" : "Model"}
                   </h3>
                   <p class="text-sm text-zinc-400 mt-1">
-                    Zen models work without setup. This selection {modelPickerTarget() === "default"
+                    Choose from your configured providers. This selection {modelPickerTarget() === "default"
                       ? "will be used for new sessions"
                       : "applies to your next message"}.
                   </p>
@@ -3527,45 +3757,54 @@ export default function App() {
               </div>
 
               <div class="mt-6 space-y-2">
-                <For each={ZEN_MODEL_OPTIONS}>
-                  {(opt) => {
-                    const active = () => modelEquals(modelPickerCurrent(), opt);
+                 <For each={modelOptions()}>
+                   {(opt) => {
+                     const active = () =>
+                       modelEquals(modelPickerCurrent(), {
+                         providerID: opt.providerID,
+                         modelID: opt.modelID,
+                       });
 
-                    return (
-                      <button
-                        class={`w-full text-left rounded-2xl border px-4 py-3 transition-colors ${
-                          active()
-                            ? "border-white/20 bg-white/5"
-                            : "border-zinc-800/70 bg-zinc-950/40 hover:bg-zinc-950/60"
-                        }`}
-                        onClick={() => applyModelSelection(opt)}
-                      >
-                        <div class="flex items-start justify-between gap-3">
-                          <div>
-                            <div class="text-sm font-medium text-zinc-100 flex items-center gap-2">
-                              {opt.label}
-                              <Show when={opt.recommended}>
-                                <span class="text-[10px] uppercase tracking-wide text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
-                                  Recommended
-                                </span>
-                              </Show>
-                            </div>
-                            <div class="text-xs text-zinc-500 mt-1">{opt.description}</div>
-                            <div class="text-[11px] text-zinc-600 font-mono mt-2">
-                              {formatModelRef(opt)}
-                            </div>
-                          </div>
+                     return (
+                       <button
+                         class={`w-full text-left rounded-2xl border px-4 py-3 transition-colors ${
+                           active()
+                             ? "border-white/20 bg-white/5"
+                             : "border-zinc-800/70 bg-zinc-950/40 hover:bg-zinc-950/60"
+                         }`}
+                         onClick={() =>
+                           applyModelSelection({
+                             providerID: opt.providerID,
+                             modelID: opt.modelID,
+                           })
+                         }
+                       >
+                         <div class="flex items-start justify-between gap-3">
+                           <div class="min-w-0">
+                             <div class="text-sm font-medium text-zinc-100 flex items-center gap-2">
+                               <span class="truncate">{opt.title}</span>
+                             </div>
+                             <Show when={opt.description}>
+                               <div class="text-xs text-zinc-500 mt-1 truncate">{opt.description}</div>
+                             </Show>
+                             <Show when={opt.footer}>
+                               <div class="text-[11px] text-zinc-600 mt-2">{opt.footer}</div>
+                             </Show>
+                             <div class="text-[11px] text-zinc-600 font-mono mt-2">
+                               {opt.providerID}/{opt.modelID}
+                             </div>
+                           </div>
 
-                          <div class="pt-0.5 text-zinc-500">
-                            <Show when={active()} fallback={<Circle size={14} />}>
-                              <CheckCircle2 size={14} class="text-emerald-400" />
-                            </Show>
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  }}
-                </For>
+                           <div class="pt-0.5 text-zinc-500">
+                             <Show when={active()} fallback={<Circle size={14} />}>
+                               <CheckCircle2 size={14} class="text-emerald-400" />
+                             </Show>
+                           </div>
+                         </div>
+                       </button>
+                     );
+                   }}
+                 </For>
               </div>
 
               <div class="mt-6 flex justify-end">
