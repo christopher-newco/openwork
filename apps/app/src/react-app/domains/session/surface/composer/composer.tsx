@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Agent } from "@opencode-ai/sdk/v2/client";
 import { ArrowUp, ChevronRight, FileText, Paperclip, Plug, Settings, Square, Terminal, X, Zap } from "lucide-react";
 import fuzzysort from "fuzzysort";
@@ -83,6 +83,7 @@ type ComposerProps = {
   onUploadInboxFiles?: ((files: File[]) => void | Promise<unknown>) | null;
   draftScopeKey?: string;
   compactTopSpacing?: boolean;
+  topAccessory?: ReactNode;
 };
 
 const FLUSH_PROMPT_EVENT = "openwork:flushPromptDraft";
@@ -940,6 +941,7 @@ export function ReactSessionComposer(props: ComposerProps) {
         <div
           className={`relative overflow-visible rounded-[24px] border border-dls-border bg-dls-surface transition-all ${panelRoundedClass}`}
         >
+          {props.topAccessory ? <div className="relative z-10">{props.topAccessory}</div> : null}
           <ReactComposerNotice notice={props.notice} />
 
           {renderMentionMenu()}
