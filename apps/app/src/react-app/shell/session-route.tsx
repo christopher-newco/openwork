@@ -1395,8 +1395,22 @@ export function SessionRoute() {
   });
   const selectedModelUnavailable = Boolean(
     local.prefs.defaultModel &&
-      providerListQuery.data &&
-      !isModelAvailableInConnectedProviders(providerListQuery.data, local.prefs.defaultModel),
+      (
+        isDesktopProviderBlocked({
+          providerId: local.prefs.defaultModel.providerID,
+          checkRestriction: checkDesktopRestriction,
+        }) ||
+        (
+          checkDesktopRestriction({ restriction: "allowCustomProviders" }) &&
+          !providerConnectedIds.some(
+            (providerId) => providerId.trim() === local.prefs.defaultModel?.providerID.trim(),
+          )
+        ) ||
+        (
+          providerListQuery.data &&
+          !isModelAvailableInConnectedProviders(providerListQuery.data, local.prefs.defaultModel)
+        )
+      ),
   );
   const canCreateTask = Boolean(
     opencodeClient && selectedWorkspaceId && !loading && !selectedWorkspaceError && !selectedModelUnavailable,
@@ -1431,6 +1445,7 @@ export function SessionRoute() {
         providerDefaults: () => sessionProviderAuthStateRef.current.providerDefaults,
         providerConnectedIds: () => sessionProviderAuthStateRef.current.providerConnectedIds,
         disabledProviders: () => sessionProviderAuthStateRef.current.disabledProviderIds,
+        checkDesktopAppRestriction: checkDesktopRestriction,
         selectedWorkspaceDisplay: () =>
           sessionProviderAuthStateRef.current.selectedWorkspace
             ? ({
@@ -1463,7 +1478,7 @@ export function SessionRoute() {
           });
         },
       }),
-    [reloadCoordinator],
+    [checkDesktopRestriction, reloadCoordinator],
   );
 
   useEffect(() => {
@@ -1472,6 +1487,19 @@ export function SessionRoute() {
       sessionProviderAuthStore.dispose();
     };
   }, [sessionProviderAuthStore]);
+
+  useEffect(() => {
+    if (!opencodeClient || !selectedWorkspaceId) return;
+
+    void sessionProviderAuthStore
+      .ensureProjectProviderDisabledState(
+        "opencode",
+        checkDesktopRestriction({ restriction: "allowZenModel" }),
+      )
+      .catch((error) => {
+        console.warn("[desktop-app-restrictions] failed to sync Zen restriction", error);
+      });
+  }, [checkDesktopRestriction, disabledProviderIds, opencodeClient, selectedWorkspaceId, selectedWorkspaceRoot, sessionProviderAuthStore]);
 
   useEffect(() => {
     sessionProviderAuthStore.syncFromOptions();
@@ -1737,12 +1765,12 @@ export function SessionRoute() {
 
   // Apply org-level restrictions (dev #1505) on top of the raw model list
   // so the picker never surfaces blocked options:
-  //   - `blockZenModel` hides the built-in OpenCode provider entries
-  //   - `disallowNonCloudModels` hides providers that OpenCode does not report
+  //   - `allowZenModel` hides the built-in OpenCode provider entries when false
+  //   - `allowCustomProviders` hides providers that OpenCode does not report
   //     as connected through the provider list endpoint.
   const allowedModelOptions = useMemo(() => {
     const restrictToCloud = checkDesktopRestriction({
-      restriction: "disallowNonCloudModels",
+      restriction: "allowCustomProviders",
     });
     return modelOptions.filter((option) => {
       if (
@@ -1976,13 +2004,13 @@ export function SessionRoute() {
   ]);
 
   const handleOpenCreateWorkspace = useCallback(() => {
-    // Respect the org-level `blockMultipleWorkspaces` restriction (dev
+    // Respect the org-level `allowMultipleWorkspaces` restriction (dev
     // #1505). If the checker returns true, the admin has disabled
     // adding further workspaces; surface a friendly notice instead of
     // opening the modal.
     if (
       workspaces.length > 0 &&
-      checkDesktopRestriction({ restriction: "blockMultipleWorkspaces" })
+      checkDesktopRestriction({ restriction: "allowMultipleWorkspaces" })
     ) {
       restrictionNotice.show({
         title: "Additional workspaces are restricted",
