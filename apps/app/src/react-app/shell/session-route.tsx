@@ -13,6 +13,7 @@ import type {
   AgentPartInput,
   FilePartInput,
   ProviderListResponse,
+  SessionStatus,
   TextPartInput,
 } from "@opencode-ai/sdk/v2/client";
 
@@ -71,6 +72,7 @@ import {
   isDesktopRuntime,
   isSandboxWorkspace,
   normalizeDirectoryPath,
+  normalizeSessionStatus,
   resolveModelDisplayName,
   safeStringify,
 } from "../../app/utils";
@@ -243,6 +245,23 @@ function describeWorkspaceCreateError(error: unknown) {
   return message;
 }
 
+function describeTaskCreateError(error: unknown) {
+  const message = describeRouteError(error);
+  const lower = message.toLowerCase();
+  if (
+    lower.includes("failed to fetch") ||
+    lower.includes("connection") ||
+    lower.includes("fetch failed") ||
+    lower.includes("econnrefused") ||
+    lower.includes("connection lost") ||
+    lower.includes("internal_error") ||
+    lower.includes("unexpected server error")
+  ) {
+    return "OpenCode is unavailable for this workspace. Retry once it restarts, or restart OpenWork if the problem continues.";
+  }
+  return message;
+}
+
 function focusPromptSoon() {
   if (typeof window === "undefined") return;
   const focus = () => window.dispatchEvent(new Event("openwork:focusPrompt"));
@@ -371,11 +390,12 @@ function toSessionGroups(
 // Don't compose `<baseUrl>/workspace/<id>` here.
 
 function isActiveSessionStatus(status: unknown) {
-  return status === "running" || status === "retry" || status === "busy";
+  return status === "running" || status === "retry" || status === "busy" || status === "streaming";
 }
 
 function getSessionStatus(session: any) {
-  return session?.status ?? session?.state ?? session?.runStatus ?? null;
+  const status = session?.status ?? session?.state ?? session?.runStatus ?? null;
+  return typeof status === "string" ? status : normalizeSessionStatus(status);
 }
 
 async function fileToDataUrl(file: File) {
@@ -473,6 +493,7 @@ export function SessionRoute() {
   const [workspaces, setWorkspaces] = useState<RouteWorkspace[]>([]);
   const [workspaceOrderIds, setWorkspaceOrderIds] = useState<string[]>(() => readWorkspaceOrderIds());
   const [sessionsByWorkspaceId, setSessionsByWorkspaceId] = useState<Record<string, any[]>>({});
+  const [runtimeSessionStatusById, setRuntimeSessionStatusById] = useState<Record<string, string>>({});
   const [errorsByWorkspaceId, setErrorsByWorkspaceId] = useState<Record<string, string | null>>({});
   const [workspaceConnectionOverrides, setWorkspaceConnectionOverrides] = useState<Record<string, WorkspaceConnectionState>>({});
   const [routeError, setRouteError] = useState<string | null>(null);
@@ -647,6 +668,19 @@ export function SessionRoute() {
         return id ? [id] : [];
       }),
     [selectedWorkspaceId, sessionsByWorkspaceId],
+  );
+  const listedSessionStatusById = useMemo(() => {
+    const next: Record<string, string> = {};
+    for (const session of Object.values(sessionsByWorkspaceId).flat()) {
+      const id = String(session?.id ?? "").trim();
+      if (!id) continue;
+      next[id] = getSessionStatus(session);
+    }
+    return next;
+  }, [sessionsByWorkspaceId]);
+  const sidebarSessionStatusById = useMemo(
+    () => ({ ...listedSessionStatusById, ...runtimeSessionStatusById }),
+    [listedSessionStatusById, runtimeSessionStatusById],
   );
 
   const backgroundSessionLoadInFlight = useRef<Map<string, number>>(new Map());
@@ -1078,6 +1112,16 @@ export function SessionRoute() {
       return next;
     });
   }, [selectedWorkspaceId]);
+
+  const handleRuntimeSessionStatus = useCallback((update: { sessionId: string; status: SessionStatus }) => {
+    const sessionId = update.sessionId;
+    if (!sessionId) return;
+    const status = normalizeSessionStatus(update.status);
+    setRuntimeSessionStatusById((current) => {
+      if (current[sessionId] === status) return current;
+      return { ...current, [sessionId]: status };
+    });
+  }, []);
 
   useEffect(() => {
     workspacesRef.current = workspaces;
@@ -2261,8 +2305,7 @@ export function SessionRoute() {
     if (
       !workspace ||
       loading ||
-      retryingWorkspaceIds.includes(workspaceId) ||
-      errorsByWorkspaceId[workspaceId]
+      retryingWorkspaceIds.includes(workspaceId)
     ) {
       return;
     }
@@ -2276,6 +2319,8 @@ export function SessionRoute() {
       { token: endpoint.token, mode: "openwork" },
     );
     try {
+      setErrorsByWorkspaceId((current) => ({ ...current, [workspaceId]: null }));
+      setRouteError(null);
       const session = unwrap(
         await workspaceClient.session.create({ directory: workspace.path?.trim() || undefined }),
       );
@@ -2295,8 +2340,17 @@ export function SessionRoute() {
       focusPromptSoon();
       void refreshRouteState();
     } catch (error) {
-      const message = describeRouteError(error);
+      const message = describeTaskCreateError(error);
       setRouteError(message);
+      setErrorsByWorkspaceId((current) => ({ ...current, [workspaceId]: message }));
+      showToast({
+        title: "OpenCode unavailable",
+        description: message,
+        tone: "error",
+        actionLabel: "Retry",
+        onAction: () => void handleCreateTaskInWorkspace(workspaceId),
+        durationMs: 0,
+      });
       if (isTransientStartupError(message)) {
         setRetryingWorkspaceIds((current) => Array.from(new Set([...current, workspaceId])));
         if (startupRetryTimerRef.current === null) {
@@ -2308,7 +2362,7 @@ export function SessionRoute() {
         }
       }
     }
-  }, [baseUrl, errorsByWorkspaceId, loading, navigateToWorkspaceSession, refreshRouteState, rememberPendingCreatedSession, retryingWorkspaceIds, token, workspaces]);
+  }, [baseUrl, loading, navigateToWorkspaceSession, refreshRouteState, rememberPendingCreatedSession, retryingWorkspaceIds, showToast, token, workspaces]);
 
   // Global shortcuts:
   //   Cmd/Ctrl+N  -> new task in selected workspace
@@ -2572,6 +2626,7 @@ export function SessionRoute() {
         opencodeBaseUrl={opencodeBaseUrl}
         openworkToken={selectedWorkspaceServerToken}
         onSessionUpdated={handleRuntimeSessionUpdated}
+        onSessionStatus={handleRuntimeSessionStatus}
       />
     ) : null}
     <SessionPage
@@ -2713,7 +2768,7 @@ export function SessionRoute() {
         selectedWorkspaceId,
         selectedSessionId,
         developerMode: false,
-        sessionStatusById: {},
+        sessionStatusById: sidebarSessionStatusById,
         connectingWorkspaceId: null,
         workspaceConnectionStateById,
         newTaskDisabled: !canCreateTask,
