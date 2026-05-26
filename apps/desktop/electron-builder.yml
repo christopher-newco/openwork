@@ -52,7 +52,7 @@ mac:
     - from: resources/helpers
       to: helpers
       filter:
-        - Computer Use.app/**
+        - "OpenWork Computer Use.app/**"
   target:
     - dmg
     - zip
