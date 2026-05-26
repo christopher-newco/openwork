@@ -126,6 +126,23 @@ export function ComputerUseConfig(props: ComputerUseConfigProps) {
     }
   };
 
+  const openPermissionHelper = async () => {
+    if (!hasDesktopBridge()) {
+      setError("OpenWork desktop is required to open the Computer Use app.");
+      return;
+    }
+
+    setError(null);
+    try {
+      const result = await desktopBridge.openComputerUsePermissionSetup();
+      const next = normalizePermissionStatus(result);
+      setPermissions(next);
+      setHint("The Computer Use app is open. Use it to grant Accessibility and Screen Recording, then come back and verify.");
+    } catch (caught) {
+      setError(errorMessage(caught));
+    }
+  };
+
   const allPermissionsGranted = permissions?.accessibility === true && permissions.screenRecording === true;
 
   return (
@@ -167,30 +184,26 @@ export function ComputerUseConfig(props: ComputerUseConfigProps) {
 
         <SetupRow
           title="2. Grant macOS permissions"
-          description="Computer Use needs Accessibility for semantic UI actions and Screen Recording for snapshots. Open the helper app to grant them."
+          description="Open the separate Computer Use app. macOS grants permissions to that app, not to OpenWork."
           complete={allPermissionsGranted}
         >
-          <div className="flex flex-col gap-2">
-            {permissions && !permissions.accessibility ? (
-              <Alert>
-                <CircleAlert />
-                <AlertDescription>
-                  Accessibility is checked inside the bundled Computer Use helper app, which owns the macOS permission separately from OpenWork.
-                </AlertDescription>
-              </Alert>
-            ) : null}
-            <PermissionRow
-              label="Accessibility"
-              granted={permissions?.accessibility === true}
-              unknown={!permissions}
-              onOpen={() => void openPermissionSettings("accessibility")}
-            />
-            <PermissionRow
-              label="Screen Recording"
-              granted={permissions?.screenRecording === true}
-              unknown={!permissions}
-              onOpen={() => void openPermissionSettings("screenRecording")}
-            />
+          <div className="flex w-full min-w-0 flex-col gap-3">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <PermissionStatus label="Accessibility" granted={permissions?.accessibility === true} unknown={!permissions} />
+              <PermissionStatus label="Screen Recording" granted={permissions?.screenRecording === true} unknown={!permissions} />
+            </div>
+            <Button className="w-full justify-center" onClick={() => void openPermissionHelper()}>
+              <Settings2 className="size-4" />
+              Open Computer Use app
+            </Button>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Button variant="outline" size="sm" onClick={() => void openPermissionSettings("accessibility")}>
+                Request Accessibility
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => void openPermissionSettings("screenRecording")}>
+                Request Screen Recording
+              </Button>
+            </div>
           </div>
         </SetupRow>
       </CardContent>
@@ -220,32 +233,29 @@ function SetupRow(props: { title: string; description: string; complete: boolean
   return (
     <div className="rounded-xl border border-border bg-card p-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex min-w-0 gap-3">
+        <div className="flex min-w-0 flex-1 gap-3">
           <StatusIcon complete={props.complete} />
           <div className="min-w-0">
             <div className="text-sm font-medium text-card-foreground">{props.title}</div>
             <div className="mt-1 text-xs leading-relaxed text-muted-foreground">{props.description}</div>
           </div>
         </div>
-        <div className="shrink-0">{props.children}</div>
+        <div className="w-full min-w-0 sm:w-[min(24rem,45%)]">{props.children}</div>
       </div>
     </div>
   );
 }
 
-function PermissionRow(props: { label: string; granted: boolean; unknown: boolean; onOpen: () => void }) {
+function PermissionStatus(props: { label: string; granted: boolean; unknown: boolean }) {
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/40 p-2 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex min-w-0 items-center justify-between gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2">
       <div className="flex items-center gap-2 text-sm">
         <StatusIcon complete={props.granted} muted={props.unknown} />
         <span>{props.label}</span>
-        <span className={props.granted ? "text-green-11" : "text-muted-foreground"}>
-          {props.unknown ? "Unknown" : props.granted ? "Granted" : "Needed"}
-        </span>
       </div>
-      <Button variant="outline" size="sm" onClick={props.onOpen}>
-        Setup permission
-      </Button>
+      <span className={`shrink-0 text-xs font-medium ${props.granted ? "text-green-11" : "text-amber-11"}`}>
+        {props.unknown ? "Check" : props.granted ? "Granted" : "Needed"}
+      </span>
     </div>
   );
 }

@@ -2405,6 +2405,9 @@ async function handleDesktopInvoke(event, command, ...args) {
     case "checkComputerUsePermissions": {
       return checkComputerUsePermissions();
     }
+    case "openComputerUsePermissionSetup": {
+      return computerUsePermissionAppRequest("/status");
+    }
     case "openComputerUsePermissionSettings": {
       const target = String(args[0] ?? "accessibility");
       const route = target === "screenRecording" ? "/request/screen-recording" : "/request/accessibility";
