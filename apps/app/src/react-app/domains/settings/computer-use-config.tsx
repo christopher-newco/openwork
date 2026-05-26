@@ -78,24 +78,20 @@ function errorMessage(error: unknown) {
 export function ComputerUseConfig(props: ComputerUseConfigProps) {
   const [permissions, setPermissions] = useState<ComputerUsePermissionStatus | null>(null);
   const [checking, setChecking] = useState(false);
+  // launching: true while we are waiting for the helper app to start
+  const [launching, setLaunching] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hint, setHint] = useState<string | null>(null);
 
   const refreshPermissions = useCallback(async () => {
     if (!hasDesktopBridge()) {
       setError("Computer Use setup is only available in the OpenWork desktop app on macOS.");
       return;
     }
-
     setChecking(true);
     setError(null);
     try {
       const result = await desktopBridge.checkComputerUsePermissions();
-      const next = normalizePermissionStatus(result);
-      setPermissions(next);
-      if (next.error) {
-        setError(next.error);
-      }
+      setPermissions(normalizePermissionStatus(result));
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {
@@ -109,22 +105,27 @@ export function ComputerUseConfig(props: ComputerUseConfigProps) {
 
   const openPermissionHelper = async () => {
     if (!hasDesktopBridge()) {
-      setError("OpenWork desktop is required to open the Computer Use app.");
+      setError("OpenWork desktop is required to launch the Computer Use helper.");
       return;
     }
-
     setError(null);
+    setLaunching(true);
     try {
+      // This IPC call launches the helper app and polls until it responds.
+      // It throws if the helper binary cannot be found or does not start.
       const result = await desktopBridge.openComputerUsePermissionSetup();
       const next = normalizePermissionStatus(result);
       setPermissions(next);
-      setHint("OpenWork Computer Use is open. Grant both permissions there, then come back and verify.");
     } catch (caught) {
       setError(errorMessage(caught));
+    } finally {
+      setLaunching(false);
     }
   };
 
-  const allPermissionsGranted = permissions?.accessibility === true && permissions.screenRecording === true;
+  const allGranted = permissions?.accessibility === true && permissions.screenRecording === true;
+  const helperRunning = permissions?.appRunning === true;
+  const initialChecking = permissions === null && checking;
 
   return (
     <Card variant="outline" size="sm">
@@ -132,66 +133,109 @@ export function ComputerUseConfig(props: ComputerUseConfigProps) {
         <CardTitle>Computer Use setup</CardTitle>
         <CardDescription>Connect the local MCP server and grant the macOS permissions it needs to control apps.</CardDescription>
         <CardAction>
-          <Button variant="ghost" size="icon-sm" onClick={() => void refreshPermissions()} disabled={checking}>
+          <Button variant="ghost" size="icon-sm" onClick={() => void refreshPermissions()} disabled={checking || launching}>
             <RefreshCw className={checking ? "animate-spin" : ""} />
           </Button>
         </CardAction>
       </CardHeader>
+
       <CardContent className="space-y-4">
         {error ? (
           <Alert variant="destructive">
             <CircleAlert />
-            <AlertDescription>{error}</AlertDescription>
+            <AlertDescription className="break-words">{error}</AlertDescription>
           </Alert>
         ) : null}
 
-        {hint ? (
-          <Alert>
-            <Settings2 />
-            <AlertDescription>{hint}</AlertDescription>
-          </Alert>
-        ) : null}
-
+        {/* Step 1 */}
         <SetupRow
           title="1. Connect Computer Use MCP"
           description="Adds the local Computer Use server to this workspace so Composer can use the computer-control tools."
           complete={props.connected}
         >
-          <Button className="min-h-10 w-full whitespace-normal text-center lg:w-auto" onClick={() => void props.onConnect?.()} disabled={!props.onConnect || props.connected || props.connecting}>
+          <Button
+            className="min-h-10 w-full whitespace-normal text-center lg:w-auto"
+            onClick={() => void props.onConnect?.()}
+            disabled={!props.onConnect || props.connected || props.connecting}
+          >
             {props.connecting ? <Loader2 className="size-4 shrink-0 animate-spin" /> : null}
-            <span className="min-w-0 break-words">{props.connected ? "Configured" : props.connecting ? "Connecting..." : "Connect MCP"}</span>
+            <span className="min-w-0 break-words">
+              {props.connected ? "Configured" : props.connecting ? "Connecting…" : "Connect MCP"}
+            </span>
           </Button>
         </SetupRow>
 
+        {/* Step 2 */}
         <SetupRow
           title="2. Grant macOS permissions"
-          description="Open the separate OpenWork Computer Use app. macOS grants permissions to that app, not to OpenWork."
-          complete={allPermissionsGranted}
+          description="Opens the OpenWork Computer Use helper app. macOS grants Accessibility and Screen Recording to that app."
+          complete={allGranted}
         >
           <div className="flex w-full min-w-0 flex-col gap-3">
             <div className="grid gap-2 xl:grid-cols-2">
-              <PermissionStatus label="Accessibility" granted={permissions?.accessibility === true} unknown={!permissions} />
-              <PermissionStatus label="Screen Recording" granted={permissions?.screenRecording === true} unknown={!permissions} />
+              <PermissionPill
+                label="Accessibility"
+                granted={permissions?.accessibility === true}
+                unknown={initialChecking || (!helperRunning && !launching)}
+              />
+              <PermissionPill
+                label="Screen Recording"
+                granted={permissions?.screenRecording === true}
+                unknown={initialChecking || (!helperRunning && !launching)}
+              />
             </div>
-            <Button className="min-h-10 w-full justify-center whitespace-normal text-center" onClick={() => void openPermissionHelper()}>
-              <Settings2 className="size-4 shrink-0" />
-              <span className="min-w-0 break-words">Grant permissions</span>
+
+            <Button
+              className="min-h-10 w-full justify-center whitespace-normal text-center"
+              onClick={() => void openPermissionHelper()}
+              disabled={launching || checking}
+            >
+              {launching ? (
+                <>
+                  <Loader2 className="size-4 shrink-0 animate-spin" />
+                  <span className="min-w-0 break-words">Opening helper…</span>
+                </>
+              ) : (
+                <>
+                  <Settings2 className="size-4 shrink-0" />
+                  <span className="min-w-0 break-words">
+                    {allGranted ? "Reopen helper" : "Grant permissions"}
+                  </span>
+                </>
+              )}
             </Button>
+
+            {!helperRunning && !launching && permissions !== null && !error ? (
+              <p className="text-center text-xs text-muted-foreground">
+                Helper app is not running — click above to open it.
+              </p>
+            ) : null}
           </div>
         </SetupRow>
       </CardContent>
+
       <CardFooter className="border-t border-border">
         <div className="flex w-full flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-          <div className="text-xs text-muted-foreground">
-            {allPermissionsGranted ? "Permissions verified. Try a Composer prompt that asks Computer Use to open an app and type." : "After granting permissions, return here and verify again."}
-          </div>
+          <p className="text-xs text-muted-foreground">
+            {allGranted
+              ? "Permissions verified. Try a Composer prompt that asks Computer Use to open an app and type."
+              : "After granting permissions, return here and verify."}
+          </p>
           <div className="flex w-full flex-col gap-2 xl:w-auto xl:flex-row">
             {props.onRefresh ? (
-              <Button className="min-h-10 w-full whitespace-normal text-center xl:w-auto" variant="outline" onClick={() => void props.onRefresh?.()}>
+              <Button
+                className="min-h-10 w-full whitespace-normal text-center xl:w-auto"
+                variant="outline"
+                onClick={() => void props.onRefresh?.()}
+              >
                 <span className="min-w-0 break-words">Refresh MCP</span>
               </Button>
             ) : null}
-            <Button className="min-h-10 w-full whitespace-normal text-center xl:w-auto" onClick={() => void refreshPermissions()} disabled={checking}>
+            <Button
+              className="min-h-10 w-full whitespace-normal text-center xl:w-auto"
+              onClick={() => void refreshPermissions()}
+              disabled={checking || launching}
+            >
               {checking ? <Loader2 className="size-4 shrink-0 animate-spin" /> : null}
               <span className="min-w-0 break-words">Verify permissions</span>
             </Button>
@@ -219,15 +263,16 @@ function SetupRow(props: { title: string; description: string; complete: boolean
   );
 }
 
-function PermissionStatus(props: { label: string; granted: boolean; unknown: boolean }) {
+function PermissionPill(props: { label: string; granted: boolean; unknown: boolean }) {
+  const { label, granted, unknown } = props;
   return (
     <div className="flex min-w-0 items-center justify-between gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2">
       <div className="flex items-center gap-2 text-sm">
-        <StatusIcon complete={props.granted} muted={props.unknown} />
-        <span className="truncate">{props.label}</span>
+        <StatusIcon complete={granted} muted={unknown} />
+        <span className="truncate">{label}</span>
       </div>
-      <span className={`shrink-0 text-xs font-medium ${props.granted ? "text-green-11" : "text-amber-11"}`}>
-        {props.unknown ? "Check" : props.granted ? "Granted" : "Needed"}
+      <span className={`shrink-0 text-xs font-medium ${granted ? "text-green-11" : unknown ? "text-muted-foreground" : "text-amber-11"}`}>
+        {unknown ? "Unknown" : granted ? "Granted" : "Needed"}
       </span>
     </div>
   );

@@ -83,31 +83,75 @@ function getComputerUseMcpCommand() {
 }
 
 async function checkComputerUsePermissions() {
-  // Single fast probe — no launch. Returns appRunning:false if helper is not up.
+  // Single fast probe with no launch. Returns appRunning:false if helper is offline.
   return computerUsePermissionFetch("/status", { timeoutMs: 700 });
 }
 
 async function launchAndQueryComputerUsePermissions(route, method = "GET") {
+  // --- Resolve the binary to launch ---
   const appPath = computerUseHelperAppPath();
-  if (!appPath) throw new Error("OpenWork Computer Use is missing from this OpenWork build.");
+  const execPath = appPath
+    ? path.join(appPath, "Contents", "MacOS", COMPUTER_USE_HELPER_EXECUTABLE)
+    : computerUseHelperDevBinaryPath();
 
-  // Bring to front (or start) the helper app.
-  await shell.openPath(appPath);
-
-  // Wait for AppKit to start and bind the HTTP server (Swift apps need ~0.5-1.5s).
-  await new Promise((resolve) => setTimeout(resolve, 900));
-
-  // Poll until the server responds — up to ~6 seconds total.
-  let lastError;
-  for (let i = 0; i < 20; i += 1) {
-    try {
-      return await computerUsePermissionFetch(route, { method, timeoutMs: 1_200 });
-    } catch (err) {
-      lastError = err;
-      await new Promise((resolve) => setTimeout(resolve, 300));
-    }
+  if (!execPath) {
+    const msg =
+      "OpenWork Computer Use helper app is not found. " +
+      "Run `pnpm dev` once so the Swift helper app is built, then try again.";
+    console.error("[ComputerUse]", msg);
+    throw new Error(msg);
   }
-  throw lastError ?? new Error("OpenWork Computer Use did not respond after launch.");
+
+  console.log("[ComputerUse] launching helper:", execPath);
+
+  // --- Launch ---
+  // Use spawn directly on the binary rather than shell.openPath so we get real
+  // error feedback. The binary with no arguments runs the permission-setup GUI.
+  const child = spawn(execPath, [], {
+    detached: true,
+    stdio: "ignore",
+    env: process.env,
+  });
+  child.unref();
+
+  child.on("error", (err) => {
+    console.error("[ComputerUse] helper launch error:", err.message);
+  });
+
+  // --- Wait for the HTTP server to bind (Swift AppKit startup ~0.5-1.5 s) ---
+  await new Promise((resolve) => setTimeout(resolve, 1_000));
+
+  // --- Poll until responsive, up to ~6 seconds ---
+  let lastResult = { ok: false, accessibility: false, screenRecording: false, appRunning: false };
+  for (let i = 0; i < 20; i += 1) {
+    const result = await computerUsePermissionFetch(route, { method, timeoutMs: 1_200 });
+    if (result.appRunning) {
+      console.log("[ComputerUse] helper responded on attempt", i + 1);
+      return result;
+    }
+    lastResult = result;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }
+
+  console.error("[ComputerUse] helper did not respond after 20 attempts");
+  throw new Error(
+    "OpenWork Computer Use opened but did not respond. " +
+    "Try running `pnpm dev` to rebuild the helper, then try again."
+  );
+}
+
+function computerUseHelperDevBinaryPath() {
+  if (app.isPackaged) return null;
+  // Locations where the Swift binary might exist after a local build.
+  const swiftPkg = path.resolve(__dirname, "../../..", "packages/handsfree/native/HandsFree");
+  const candidates = [
+    path.join(swiftPkg, ".build", "release", "HandsFreeComputerUse"),
+    path.join(swiftPkg, ".build", "arm64-apple-macosx", "release", "HandsFreeComputerUse"),
+    path.join(swiftPkg, ".build", "debug", "HandsFreeComputerUse"),
+    path.join(swiftPkg, ".build", "arm64-apple-macosx", "debug", "HandsFreeComputerUse"),
+    process.env.OPENWORK_COMPUTER_USE_BINARY?.trim(),
+  ].filter(Boolean);
+  return candidates.find((c) => existsSync(c)) ?? null;
 }
 
 async function computerUsePermissionFetch(route, options = {}) {
@@ -133,7 +177,7 @@ async function computerUsePermissionFetch(route, options = {}) {
   }
 }
 
-// Legacy — kept for openComputerUsePermissionSettings backward compat.
+// Legacy path used by openComputerUsePermissionSettings.
 async function computerUsePermissionAppRequest(route, options = {}) {
   if (options.launch !== false) {
     await shell.openPath(computerUseHelperAppPath() ?? "");
