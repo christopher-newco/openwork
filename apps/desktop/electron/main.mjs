@@ -43,19 +43,26 @@ const RELEASE_DOWNLOAD_BASE_URL = "https://github.com/different-ai/openwork/rele
 const RELEASE_PAGE_URL = "https://github.com/different-ai/openwork/releases/latest";
 const DOCS_PAGE_URL = "https://openworklabs.com/docs";
 const BROWSER_PLUGIN = "opencode-chrome-devtools";
-const COMPUTER_USE_HELPER_APP_NAME = "Computer Use.app";
+const COMPUTER_USE_HELPER_APP_NAME = "OpenWork Computer Use.app";
 const COMPUTER_USE_HELPER_EXECUTABLE = "ComputerUse";
 
 function computerUseHelperExecutablePath() {
+  const appPath = computerUseHelperAppPath();
   const explicitBinary = process.env.OPENWORK_COMPUTER_USE_BINARY?.trim();
-  const explicitApp = process.env.OPENWORK_COMPUTER_USE_APP?.trim();
   const candidates = [
     explicitBinary,
-    explicitApp ? path.join(explicitApp, "Contents", "MacOS", COMPUTER_USE_HELPER_EXECUTABLE) : null,
-    process.resourcesPath
-      ? path.join(process.resourcesPath, "helpers", COMPUTER_USE_HELPER_APP_NAME, "Contents", "MacOS", COMPUTER_USE_HELPER_EXECUTABLE)
-      : null,
-    path.resolve(__dirname, "..", "resources", "helpers", COMPUTER_USE_HELPER_APP_NAME, "Contents", "MacOS", COMPUTER_USE_HELPER_EXECUTABLE),
+    appPath ? path.join(appPath, "Contents", "MacOS", COMPUTER_USE_HELPER_EXECUTABLE) : null,
+  ].filter(Boolean);
+
+  return candidates.find((candidate) => existsSync(candidate)) ?? null;
+}
+
+function computerUseHelperAppPath() {
+  const explicitApp = process.env.OPENWORK_COMPUTER_USE_APP?.trim();
+  const candidates = [
+    explicitApp,
+    process.resourcesPath ? path.join(process.resourcesPath, "helpers", COMPUTER_USE_HELPER_APP_NAME) : null,
+    path.resolve(__dirname, "..", "resources", "helpers", COMPUTER_USE_HELPER_APP_NAME),
   ].filter(Boolean);
 
   return candidates.find((candidate) => existsSync(candidate)) ?? null;
@@ -66,7 +73,7 @@ function getComputerUseMcpCommand() {
   if (helperExecutable) return [helperExecutable, "mcp"];
 
   if (app.isPackaged) {
-    throw new Error("Computer Use helper app is missing from this OpenWork build.");
+    throw new Error("OpenWork Computer Use is missing from this OpenWork build.");
   }
 
   if (process.env.OPENWORK_DEV_MODE === "1") {
@@ -75,111 +82,86 @@ function getComputerUseMcpCommand() {
   return ["npx", "-y", "@openwork/handsfree", "mcp"];
 }
 
-function callComputerUseMcpTool(name, args = {}) {
-  const [command, ...commandArgs] = getComputerUseMcpCommand();
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, commandArgs, {
-      stdio: ["pipe", "pipe", "pipe"],
-      env: process.env,
-    });
-    let stdoutBuffer = "";
-    let stderr = "";
-    let settled = false;
+// ---------------------------------------------------------------------------
+// Permission checks — spawn the binary with --check, read stdout, done.
+// Fresh process = fresh TCC read = always accurate. No HTTP server needed.
+// ---------------------------------------------------------------------------
 
-    const cleanup = () => {
-      clearTimeout(timeout);
-      child.kill();
-    };
+function resolveComputerUseExecutable() {
+  // 1. Explicit env override.
+  const explicit = process.env.OPENWORK_COMPUTER_USE_BINARY?.trim();
+  if (explicit && existsSync(explicit)) return explicit;
 
-    const fail = (error) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      reject(error);
-    };
+  // 2. .app bundle (packaged builds + pnpm dev).
+  const appPath = computerUseHelperAppPath();
+  if (appPath) {
+    const bin = path.join(appPath, "Contents", "MacOS", COMPUTER_USE_HELPER_EXECUTABLE);
+    if (existsSync(bin)) return bin;
+  }
 
-    const finish = (response) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      resolve(response);
-    };
+  // 3. Dev fallback — raw Swift build output.
+  if (!app.isPackaged) {
+    const swiftPkg = path.resolve(__dirname, "../../..", "packages/handsfree/native/HandsFree");
+    const devCandidates = [
+      path.join(swiftPkg, ".build", "release", "HandsFreeComputerUse"),
+      path.join(swiftPkg, ".build", "arm64-apple-macosx", "release", "HandsFreeComputerUse"),
+      path.join(swiftPkg, ".build", "debug", "HandsFreeComputerUse"),
+      path.join(swiftPkg, ".build", "arm64-apple-macosx", "debug", "HandsFreeComputerUse"),
+    ];
+    for (const c of devCandidates) {
+      if (existsSync(c)) return c;
+    }
+  }
 
-    const timeout = setTimeout(() => {
-      fail(new Error(`Computer Use MCP ${name} timed out.${stderr.trim() ? ` ${stderr.trim()}` : ""}`));
-    }, 45_000);
-
-    child.stdout.setEncoding("utf8");
-    child.stdout.on("data", (chunk) => {
-      stdoutBuffer += chunk;
-      for (;;) {
-        const newlineIndex = stdoutBuffer.indexOf("\n");
-        if (newlineIndex === -1) break;
-        const line = stdoutBuffer.slice(0, newlineIndex).trim();
-        stdoutBuffer = stdoutBuffer.slice(newlineIndex + 1);
-        if (!line) continue;
-        try {
-          const response = JSON.parse(line);
-          if (response.id === 2) {
-            finish(response);
-            return;
-          }
-        } catch {
-          // Package managers can write progress lines; ignore non-JSON stdout.
-        }
-      }
-    });
-
-    child.stderr.setEncoding("utf8");
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk;
-    });
-
-    child.on("error", fail);
-    child.on("exit", (code) => {
-      if (!settled && code !== 0) {
-        fail(new Error(stderr.trim() || `Computer Use MCP exited with status ${code ?? "unknown"}.`));
-      }
-    });
-
-    child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} })}\n`);
-    child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" })}\n`);
-    child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name, arguments: args } })}\n`);
-  });
-}
-
-function computerUseToolText(response) {
-  const content = response?.result?.content;
-  if (!Array.isArray(content)) return "";
-  const textPart = content.find((part) => part?.type === "text" && typeof part.text === "string");
-  return textPart?.text ?? "";
+  return null;
 }
 
 async function checkComputerUsePermissions() {
-  const response = await callComputerUseMcpTool("check_permissions");
-  const text = computerUseToolText(response);
-  try {
-    const parsed = JSON.parse(text);
-    return {
-      ok: parsed?.ok === true,
-      accessibility: parsed?.accessibility === true,
-      screenRecording: parsed?.screenRecording === true,
-    };
-  } catch {
-    return {
-      ok: false,
-      accessibility: false,
-      screenRecording: false,
-      error: text || "Computer Use permission check returned an unreadable response.",
-    };
+  // Spawn binary --check → read JSON from stdout → exit. Always fresh.
+  const bin = resolveComputerUseExecutable();
+  if (!bin) {
+    return { ok: false, accessibility: false, screenRecording: false, error: "Helper binary not found. Run pnpm dev to build it." };
   }
+  return spawnCheckPermissions(bin);
 }
 
-function computerUsePermissionSettingsUrl(target) {
-  if (target === "screenRecording") {
-    return "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture";
+function spawnCheckPermissions(bin) {
+  return new Promise((resolve) => {
+    let stdout = "";
+    const child = spawn(bin, ["--check"], { stdio: ["ignore", "pipe", "ignore"], timeout: 5_000 });
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => { stdout += chunk; });
+    child.on("error", () => resolve({ ok: false, accessibility: false, screenRecording: false, error: "Failed to run permission check." }));
+    child.on("close", () => {
+      try {
+        const parsed = JSON.parse(stdout.trim());
+        resolve({
+          ok: parsed?.ok === true,
+          accessibility: parsed?.accessibility === true,
+          screenRecording: parsed?.screenRecording === true,
+        });
+      } catch {
+        resolve({ ok: false, accessibility: false, screenRecording: false, error: "Permission check returned invalid output." });
+      }
+    });
+  });
+}
+
+async function openComputerUseSetupApp() {
+  // Open the GUI. Use the .app bundle if available so macOS shows it as
+  // a real app with its own dock icon and permission identity.
+  const appPath = computerUseHelperAppPath();
+  if (appPath) {
+    const result = await shell.openPath(appPath);
+    if (result) console.error("[ComputerUse] shell.openPath error:", result);
+    return;
   }
-  return "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";
+
+  // Fallback: spawn the raw binary (opens the same GUI).
+  const bin = resolveComputerUseExecutable();
+  if (!bin) throw new Error("Helper binary not found. Run pnpm dev to build it.");
+  const child = spawn(bin, [], { detached: true, stdio: "ignore" });
+  child.unref();
 }
 
 // Production Electron shares the same on-disk state folder as the Tauri shell
@@ -2491,12 +2473,19 @@ async function handleDesktopInvoke(event, command, ...args) {
       return getComputerUseMcpCommand();
     }
     case "checkComputerUsePermissions": {
+      // Spawn --check → fresh TCC read → always accurate.
+      return checkComputerUsePermissions();
+    }
+    case "openComputerUsePermissionSetup": {
+      // Open the GUI app. Returns immediately — React shows "verify" CTA.
+      await openComputerUseSetupApp();
+      // Return a fresh check so the UI shows the current state.
       return checkComputerUsePermissions();
     }
     case "openComputerUsePermissionSettings": {
-      const target = String(args[0] ?? "accessibility");
-      await shell.openExternal(computerUsePermissionSettingsUrl(target));
-      return { ok: true };
+      // Legacy: open the setup app (same as above).
+      await openComputerUseSetupApp();
+      return checkComputerUsePermissions();
     }
     case "getOpenworkUiMcpEnvironment": {
       return {
