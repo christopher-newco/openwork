@@ -108,7 +108,8 @@ final class PermissionSetupViewController: NSViewController {
         buildLayout()
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.refresh() }
+            guard let controller = self else { return }
+            Task { @MainActor in controller.refresh() }
         }
     }
 
