@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { SUGGESTED_PLUGINS } from "../../app/constants";
+import type { EnablementContext } from "../../app/enablement";
 import { createClient } from "../../app/lib/opencode";
 import {
   createOpenworkServerClient,
@@ -43,6 +44,7 @@ import "../domains/settings/computer-use-config";
 import "../domains/settings/browser-extension-config";
 import "../domains/settings/openwork-voice-config";
 import { getExtensionConfigSlot, type ExtensionConfigContext } from "../domains/settings/extension-registry";
+import { isOpenWorkExtensionEnabled } from "../domains/settings/extension-state";
 import { PreferencesView } from "../domains/settings/pages/preferences-view";
 import { ShellCustomizationView } from "../domains/settings/pages/shell-view";
 import { GeneralSettingsView } from "../domains/settings/pages/general-view";
@@ -1634,6 +1636,37 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       : [],
   );
   const mcpConnectedAppsCount = connectionsSnapshot.mcpServers.length;
+
+  // Build enablement context from all available runtime state.
+  const enablementContext = useMemo<EnablementContext>(() => {
+    const mcpConfigured = new Set(connectionsSnapshot.mcpServers.map((s) => s.name));
+    const connectedProviders = new Set(providerConnectedIds);
+    const configuredEnvKeys = new Set(userEnvKeys);
+    const loadedPlugins = new Set<string>();
+    // imageExtensionInstalled is derived from listPlugins — add it to the set.
+    if (imageExtensionInstalled) loadedPlugins.add("openwork-image-generation");
+    // Browser plugin detection: check if any configured plugin matches the chrome-devtools name.
+    // For now, treat it as loaded if the plugin is in the MCP/plugin list — this will
+    // be refined when we add a real plugin-loaded signal from the engine.
+    const browserPluginConfigured = connectionsSnapshot.mcpServers.some(
+      (s) => s.name === "opencode-chrome-devtools" || s.config.command?.some((c: string) => c.includes("chrome-devtools")),
+    );
+    if (browserPluginConfigured) loadedPlugins.add("opencode-chrome-devtools");
+
+    return {
+      mcpStatuses: connectionsSnapshot.mcpStatuses,
+      mcpConfigured,
+      loadedPlugins,
+      connectedProviders,
+      configuredEnvKeys,
+      // Toggle state reader for extensions with defaultEnabled / explicit toggle.
+      isToggleEnabled: (ref: string) => {
+        const catalog = connectionsStore.quickConnect;
+        const match = catalog.find((e: { id?: string; serverName?: string }) => (e.id ?? e.serverName) === ref);
+        return match ? isOpenWorkExtensionEnabled(match) : false;
+      },
+    };
+  }, [connectionsSnapshot, providerConnectedIds, userEnvKeys, imageExtensionInstalled]);
   const routeOpenworkStatus = openworkClient ? "connected" : "disconnected";
   const notFoundRouteError = !loading && routeWorkspaceId && !selectedWorkspace
     ? "Workspace was not found. Select a new workspace from the sidebar."
@@ -2048,6 +2081,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
                 selectedMcp={connectionsSnapshot.selectedMcp}
                 setSelectedMcp={(name) => connectionsStore.setSelectedMcp(name)}
                 quickConnect={connectionsStore.quickConnect}
+                enablementContext={enablementContext}
                 builtInExtensionsDisabled={checkDesktopRestriction({ restriction: "allowBuiltInExtensions" })}
                 connectMcp={(entry) => {
                   void connectionsStore.connectMcp(entry);

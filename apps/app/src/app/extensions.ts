@@ -78,6 +78,32 @@ export type OpenWorkExtensionLifecycle = {
   detection?: string[];
 };
 
+// ---------------------------------------------------------------------------
+// Enablement — declarative conditions for extension "active" state
+// ---------------------------------------------------------------------------
+
+export type EnablementConditionType =
+  | "mcp-connected"
+  | "plugin-loaded"
+  | "provider-connected"
+  | "env-set"
+  | "permission-granted"
+  | "toggle-enabled";
+
+export type EnablementCondition = {
+  type: EnablementConditionType;
+  /** What to check — MCP server name, plugin id, env key, etc. */
+  ref: string;
+  /** Human-readable label shown in the UI. */
+  label: string;
+};
+
+/** Result of evaluating a single enablement condition at runtime. */
+export type EnablementResult = {
+  condition: EnablementCondition;
+  met: boolean;
+};
+
 export type OpenWorkExtensionManifest = {
   schemaVersion: 1;
   id: string;
@@ -96,6 +122,8 @@ export type OpenWorkExtensionManifest = {
   resources: OpenWorkExtensionResource[];
   contributions?: OpenWorkExtensionContribution[];
   lifecycle?: OpenWorkExtensionLifecycle;
+  /** Declarative conditions that must ALL be true for the extension to be "active". */
+  enablement?: EnablementCondition[];
   defaultEnabled?: boolean;
   platform?: Array<"darwin" | "linux" | "windows" | "web">;
 };
@@ -144,6 +172,10 @@ export const BUILT_IN_OPENWORK_EXTENSION_MANIFESTS: OpenWorkExtensionManifest[] 
       { type: "session-side-panel", ref: "openwork.browser.panel", location: "session-right-pane" },
       { type: "composer-prompt", prompt: "Use the OpenWork Browser extension to ", location: "composer" },
     ],
+    enablement: [
+      { type: "toggle-enabled", ref: "openwork-browser", label: "Enabled" },
+      { type: "plugin-loaded", ref: "opencode-chrome-devtools", label: "Browser plugin loaded" },
+    ],
     lifecycle: { reload: ["plugins", "agents"], detection: ["plugin:opencode-chrome-devtools"] },
     defaultEnabled: true,
   },
@@ -186,6 +218,11 @@ export const BUILT_IN_OPENWORK_EXTENSION_MANIFESTS: OpenWorkExtensionManifest[] 
       { type: "test-action", ref: "openwork.computerUse.healthCheck", label: "Verify Computer Use MCP" },
       { type: "composer-prompt", prompt: "Use Computer Use to ", location: "composer" },
     ],
+    enablement: [
+      { type: "mcp-connected", ref: "computer-use", label: "MCP server connected" },
+      { type: "permission-granted", ref: "accessibility", label: "Accessibility permission" },
+      { type: "permission-granted", ref: "screenRecording", label: "Screen Recording permission" },
+    ],
     lifecycle: { reload: ["mcp"], detection: ["mcp:computer-use"] },
     platform: ["darwin"],
   },
@@ -213,6 +250,10 @@ export const BUILT_IN_OPENWORK_EXTENSION_MANIFESTS: OpenWorkExtensionManifest[] 
       { type: "settings-panel", ref: "openwork.imageGen.settings", location: "settings-detail" },
       { type: "test-action", ref: "openwork.imageGen.testGenerate", label: "Generate test image" },
       { type: "composer-prompt", prompt: "Use the OpenAI Image Gen extension to ", location: "composer" },
+    ],
+    enablement: [
+      { type: "plugin-loaded", ref: "openwork-image-generation", label: "Image plugin installed" },
+      { type: "env-set", ref: "OPENAI_API_KEY", label: "OpenAI API key" },
     ],
     lifecycle: { reload: ["plugins"], detection: ["plugin:openwork-image-generation"] },
   },
@@ -246,6 +287,10 @@ export const BUILT_IN_OPENWORK_EXTENSION_MANIFESTS: OpenWorkExtensionManifest[] 
       { type: "test-action", ref: "openwork.voice.testRealtime", label: "Test Realtime" },
       { type: "composer-prompt", prompt: "Use Voice Mode to ", location: "composer" },
     ],
+    enablement: [
+      { type: "toggle-enabled", ref: "openwork-voice", label: "Enabled" },
+      { type: "env-set", ref: "OPENAI_API_KEY", label: "OpenAI API key" },
+    ],
     lifecycle: { reload: ["config"], detection: ["env:OPENAI_REALTIME_API_KEY", "env:OPENAI_API_KEY"] },
   },
   {
@@ -269,6 +314,9 @@ export const BUILT_IN_OPENWORK_EXTENSION_MANIFESTS: OpenWorkExtensionManifest[] 
       { type: "settings-panel", ref: "openwork.ollama.settings", location: "settings-detail" },
       { type: "test-action", ref: "openwork.ollama.listModels", label: "Check local models" },
       { type: "composer-prompt", prompt: "Use the Ollama extension to ", location: "composer" },
+    ],
+    enablement: [
+      { type: "provider-connected", ref: "ollama", label: "Ollama provider" },
     ],
     lifecycle: { reload: ["config"], detection: ["provider:ollama"] },
   },
