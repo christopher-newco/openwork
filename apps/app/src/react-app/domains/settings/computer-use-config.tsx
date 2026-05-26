@@ -124,20 +124,6 @@ export function ComputerUseConfig(props: ComputerUseConfigProps) {
     }
   };
 
-  const relaunchOpenWork = async () => {
-    if (!hasDesktopBridge()) {
-      setError("OpenWork desktop is required to relaunch.");
-      return;
-    }
-
-    setError(null);
-    try {
-      await desktopBridge.relaunchOpenWork();
-    } catch (caught) {
-      setError(errorMessage(caught));
-    }
-  };
-
   const allPermissionsGranted = permissions?.accessibility === true && permissions.screenRecording === true;
 
   return (
@@ -187,9 +173,9 @@ export function ComputerUseConfig(props: ComputerUseConfigProps) {
               <PermissionStatus label="Accessibility" granted={permissions?.accessibility === true} unknown={!permissions} />
               <PermissionStatus label="Screen Recording" granted={permissions?.screenRecording === true} unknown={!permissions} />
             </div>
-            <Button className="min-h-10 w-full justify-center" onClick={() => void (allPermissionsGranted ? relaunchOpenWork() : openPermissionHelper())}>
+            <Button className="min-h-10 w-full justify-center" onClick={() => void openPermissionHelper()}>
               <Settings2 className="size-4" />
-              {allPermissionsGranted ? "Relaunch OpenWork" : "Grant permissions"}
+              Grant permissions
             </Button>
           </div>
         </SetupRow>
