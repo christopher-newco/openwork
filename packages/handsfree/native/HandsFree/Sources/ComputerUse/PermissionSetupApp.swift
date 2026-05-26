@@ -26,22 +26,15 @@ struct ComputerUsePermissionStatus {
 }
 
 enum ComputerUsePermissions {
+    /// Non-prompting check — safe to call on a timer / from HTTP polling.
     static func status() -> ComputerUsePermissionStatus {
-        // AXIsProcessTrusted() checks the live TCC state every call — reliable.
-        let accessibility = AXIsProcessTrusted()
-
-        // CGPreflightScreenCaptureAccess() can return a stale cached "false" in
-        // the same process even after the user enables the toggle in System Settings.
-        // CGRequestScreenCaptureAccess() forces a live TCC re-read and returns the
-        // real current state without showing a dialog if already decided.
-        let screenRecording = CGRequestScreenCaptureAccess()
-
-        return ComputerUsePermissionStatus(
-            accessibility: accessibility,
-            screenRecording: screenRecording
+        ComputerUsePermissionStatus(
+            accessibility: AXIsProcessTrusted(),
+            screenRecording: CGPreflightScreenCaptureAccess()
         )
     }
 
+    /// Prompting request — only call when the user explicitly clicks "Grant".
     static func request(_ target: ComputerUsePermissionTarget) {
         switch target {
         case .accessibility:
