@@ -31,7 +31,7 @@ export type EmbeddedServerHandle = {
   /** The resolved server config (with OpenCode URLs populated). */
   config: ServerConfig;
   /** Stop the HTTP server and managed OpenCode (if any). */
-  stop: () => void;
+  stop: () => Promise<void>;
 };
 
 export async function startEmbeddedServer(options: EmbeddedServerOptions): Promise<EmbeddedServerHandle> {
@@ -80,10 +80,17 @@ export async function startEmbeddedServer(options: EmbeddedServerOptions): Promi
       config.opencodeUsername = managedOpencode.username;
       config.opencodePassword = managedOpencode.password;
       for (const entry of config.workspaces) {
-        entry.baseUrl ??= managedOpencode.url;
-        entry.opencodeUsername ??= managedOpencode.username;
-        entry.opencodePassword ??= managedOpencode.password;
-        entry.directory ??= entry.path;
+        if (entry.workspaceType === "remote") {
+          entry.baseUrl ??= managedOpencode.url;
+          entry.opencodeUsername ??= managedOpencode.username;
+          entry.opencodePassword ??= managedOpencode.password;
+          entry.directory ??= entry.path;
+          continue;
+        }
+        entry.baseUrl = managedOpencode.url;
+        entry.opencodeUsername = managedOpencode.username;
+        entry.opencodePassword = managedOpencode.password;
+        entry.directory = entry.path;
       }
     }
   }
@@ -94,9 +101,9 @@ export async function startEmbeddedServer(options: EmbeddedServerOptions): Promi
     port: server.port,
     url: `http://${config.host === "0.0.0.0" ? "127.0.0.1" : config.host}:${server.port}`,
     config,
-    stop() {
+    async stop() {
       managedOpencode?.close();
-      server.stop();
+      await server.stop();
     },
   };
 }
