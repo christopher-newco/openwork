@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 
-import { SUGGESTED_PLUGINS } from "../../app/constants";
+import { isBuiltInOpenWorkExtension, SUGGESTED_PLUGINS } from "../../app/constants";
 import type { EnablementContext } from "../../app/enablement";
 import { createClient } from "../../app/lib/opencode";
 import {
@@ -44,8 +44,9 @@ import "../domains/settings/computer-use-config";
 import "../domains/settings/browser-extension-config";
 import "../domains/settings/openwork-voice-config";
 import "../domains/settings/google-workspace-config";
-import { getExtensionConfigSlot, getExtensionConnected, type ExtensionConfigContext } from "../domains/settings/extension-registry";
-import { isOpenWorkExtensionEnabled } from "../domains/settings/extension-state";
+import { useSettingsExtensionController } from "../domains/settings/settings-extension-controller";
+import { buildExtensionItems } from "../domains/settings/extension-items";
+import { isOpenWorkExtensionEnabled, OPENWORK_EXTENSION_STATE_CHANGED, setOpenWorkExtensionEnabled } from "../domains/settings/extension-state";
 import { PreferencesView } from "../domains/settings/pages/preferences-view";
 import { ShellCustomizationView } from "../domains/settings/pages/shell-view";
 import { GeneralSettingsView } from "../domains/settings/pages/general-view";
@@ -85,6 +86,7 @@ import {
   workspaceForget,
   workspaceSetRuntimeActive,
   workspaceSetSelected,
+  desktopBridge,
   type WorkspaceInfo,
   type WorkspaceList,
   revealDesktopItemInDir,
@@ -187,6 +189,14 @@ function describeWorkspaceCreateError(error: unknown) {
     return `${message}\n\nOpenWork could not read the workspace config before the filesystem timed out. This often happens when the folder is still syncing from iCloud Drive or another remote folder. Wait for the folder to finish downloading, move the workspace to a local folder, or try again.`;
   }
   return message;
+}
+
+function normalizeComputerUsePermissions(value: unknown) {
+  if (typeof value !== "object" || value === null) return null;
+  return {
+    accessibility: "accessibility" in value && value.accessibility === true,
+    screenRecording: "screenRecording" in value && value.screenRecording === true,
+  };
 }
 
 function mergeRouteWorkspaces(
@@ -515,11 +525,12 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   const [localProviderBusy, setLocalProviderBusy] = useState(false);
   const [localProviderStatus, setLocalProviderStatus] = useState<string | null>(null);
   const [localProviderError, setLocalProviderError] = useState<string | null>(null);
-  const [imageExtensionInstalled, setImageExtensionInstalled] = useState(false);
   const [googleWorkspaceConnected, setGoogleWorkspaceConnected] = useState(false);
   const [imageExtensionBusy, setImageExtensionBusy] = useState(false);
   const [imageExtensionStatus, setImageExtensionStatus] = useState<string | null>(null);
   const [imageExtensionError, setImageExtensionError] = useState<string | null>(null);
+  const [computerUsePermissions, setComputerUsePermissions] = useState<{ accessibility: boolean; screenRecording: boolean } | null>(null);
+  const [extensionStateVersion, setExtensionStateVersion] = useState(0);
   const [imageGenerationBusy, setImageGenerationBusy] = useState(false);
   const [imageGenerationStatus, setImageGenerationStatus] = useState<string | null>(null);
   const [imageGenerationError, setImageGenerationError] = useState<string | null>(null);
@@ -901,13 +912,29 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   }, [opencodeClient]);
 
   useEffect(() => {
-    setImageExtensionInstalled(
-      userEnvKeys.includes("OPENAI_API_KEY") ||
-      userEnvKeys.includes("OPENWORK_OPENAI_IMAGE_API_KEY") ||
-      providers.some((provider) => provider.id === "openai" && provider.source === "env") ||
-      providerConnectedIds.includes("openai"),
-    );
-  }, [providerConnectedIds, providers, userEnvKeys]);
+    const refresh = () => setExtensionStateVersion((value) => value + 1);
+    window.addEventListener(OPENWORK_EXTENSION_STATE_CHANGED, refresh);
+    window.addEventListener("storage", refresh);
+    return () => {
+      window.removeEventListener(OPENWORK_EXTENSION_STATE_CHANGED, refresh);
+      window.removeEventListener("storage", refresh);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isDesktopRuntime() || !isMacPlatform()) return;
+    let cancelled = false;
+    void desktopBridge.checkComputerUsePermissions()
+      .then((result) => {
+        if (cancelled) return;
+        const permissions = normalizeComputerUsePermissions(result);
+        if (permissions) setComputerUsePermissions(permissions);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const client = selectedWorkspaceEndpoint?.client ?? openworkClient;
@@ -959,7 +986,6 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     try {
       await openworkClient.upsertUserEnv([{ key: "OPENAI_API_KEY", value: resolvedApiKey }]);
       setUserEnvKeys((current) => Array.from(new Set([...current, "OPENAI_API_KEY"])));
-      setImageExtensionInstalled(true);
       setImageExtensionStatus("Saved OPENAI_API_KEY. Agents can use OpenWork extension actions for image generation.");
     } catch (error) {
       setImageExtensionError(describeRouteError(error));
@@ -993,7 +1019,6 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       if (openworkClient) {
         await openworkClient.upsertUserEnv([{ key: "OPENAI_API_KEY", value: apiKey }]);
         setUserEnvKeys((current) => Array.from(new Set([...current, "OPENAI_API_KEY"])));
-        setImageExtensionInstalled(true);
       }
       const response = await client.callExtensionAction({
         extensionId: OPENAI_IMAGE_EXTENSION_ID,
@@ -1646,6 +1671,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       loadedPlugins,
       connectedProviders,
       configuredEnvKeys,
+      permissions: computerUsePermissions ?? undefined,
       // Toggle state reader for extensions with defaultEnabled / explicit toggle.
       isToggleEnabled: (ref: string) => {
         const catalog = connectionsStore.quickConnect;
@@ -1653,7 +1679,58 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         return match ? isOpenWorkExtensionEnabled(match) : false;
       },
     };
-  }, [connectionsSnapshot, providerConnectedIds, userEnvKeys]);
+  }, [computerUsePermissions, connectionsSnapshot, extensionStateVersion, providerConnectedIds, userEnvKeys]);
+  const builtInExtensionsDisabled = checkDesktopRestriction({ restriction: "allowBuiltInExtensions" });
+  const builtInMarketplaceEntries = useMemo(
+    () => connectionsStore.quickConnect.filter(isBuiltInOpenWorkExtension),
+    [connectionsStore.quickConnect],
+  );
+  const extensionController = useSettingsExtensionController({
+    openworkServerClient: selectedWorkspaceEndpoint?.client ?? openworkClient,
+    enablementContext,
+    mcpServers: connectionsSnapshot.mcpServers,
+    mcpConnectingName: connectionsSnapshot.mcpConnectingName,
+    onComputerUsePermissionsChange: setComputerUsePermissions,
+    googleWorkspaceConnected,
+    setGoogleWorkspaceConnected,
+    connectMcp: (entry) => connectionsStore.connectMcp(entry),
+    refreshMcpServers: () => connectionsStore.refreshMcpServers(),
+    providers,
+    providerConnectedIds,
+    userEnvKeys,
+    imageExtension: {
+      busy: imageExtensionBusy || imageGenerationBusy,
+      status: imageExtensionStatus ?? imageGenerationStatus,
+      error: imageExtensionError ?? imageGenerationError,
+      onInstall: installOpenAiImageExtension,
+      onTestGenerate: generateOpenAiTestImage,
+    },
+    voiceExtension: {
+      busy: voiceBusy,
+      status: voiceStatus,
+      error: voiceError,
+      onSaveApiKey: saveVoiceApiKey,
+      onTestSession: testVoiceSession,
+    },
+    localProvider: {
+      busy: localProviderBusy,
+      status: localProviderStatus,
+      error: localProviderError,
+      onInstall: installLocalProvider,
+    },
+  });
+  const extensionItems = useMemo(
+    () => buildExtensionItems({
+      quickConnect: connectionsStore.quickConnect,
+      mcpServers: connectionsSnapshot.mcpServers,
+      installedSkills: extensionsStore.skills(),
+      importedCloudPlugins: extensionsStore.importedCloudPlugins(),
+      cloudMarketplaces: extensionsStore.cloudOrgMarketplaces(),
+      enablementContext,
+      isBuiltInConnected: extensionController.isConnected,
+    }),
+    [connectionsSnapshot.mcpServers, connectionsStore.quickConnect, enablementContext, extensionController, extensionsStore],
+  );
   const routeOpenworkStatus = openworkClient ? "connected" : "disconnected";
   const notFoundRouteError = !loading && routeWorkspaceId && !selectedWorkspace
     ? "Workspace was not found. Select a new workspace from the sidebar."
@@ -2076,66 +2153,14 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
                 mcpConnectingName={connectionsSnapshot.mcpConnectingName}
                 selectedMcp={connectionsSnapshot.selectedMcp}
                 setSelectedMcp={(name) => connectionsStore.setSelectedMcp(name)}
-                quickConnect={connectionsStore.quickConnect}
+                quickConnect={extensionItems.installedMcpEntries}
                 enablementContext={enablementContext}
-                builtInExtensionsDisabled={checkDesktopRestriction({ restriction: "allowBuiltInExtensions" })}
+                builtInExtensionsDisabled={builtInExtensionsDisabled}
                 connectMcp={(entry) => {
                   void connectionsStore.connectMcp(entry);
                 }}
-                configSlotForEntry={(entry) => getExtensionConfigSlot(entry, {
-                  openworkServerClient: selectedWorkspaceEndpoint?.client ?? openworkClient,
-                  extensionConnections: {
-                    "google-workspace": googleWorkspaceConnected,
-                  },
-                  onExtensionConnectionChange: (extensionId, connected) => {
-                    if (extensionId === "google-workspace") setGoogleWorkspaceConnected(connected);
-                  },
-                  computerUse: {
-                    connected: connectionsSnapshot.mcpServers.some((server) => server.name === "computer-use"),
-                    connecting: connectionsSnapshot.mcpConnectingName === entry.name,
-                    onConnect: () => connectionsStore.connectMcp(entry),
-                    onRefresh: () => connectionsStore.refreshMcpServers(),
-                  },
-                  imageExtension: {
-                    busy: imageExtensionBusy || imageGenerationBusy,
-                    status: imageExtensionStatus ?? imageGenerationStatus,
-                    error: imageExtensionError ?? imageGenerationError,
-                    envKeyDetected: providers.some((p) => p.id === "openai" && p.source === "env") || providerConnectedIds.includes("openai"),
-                    onInstall: installOpenAiImageExtension,
-                    onTestGenerate: generateOpenAiTestImage,
-                  },
-                  voiceExtension: {
-                    busy: voiceBusy,
-                    status: voiceStatus,
-                    error: voiceError,
-                    envKeyDetected:
-                      userEnvKeys.includes("OPENAI_REALTIME_API_KEY") ||
-                      userEnvKeys.includes("OPENAI_API_KEY") ||
-                      providers.some((p) => p.id === "openai" && p.source === "env") ||
-                      providerConnectedIds.includes("openai"),
-                    onSaveApiKey: saveVoiceApiKey,
-                    onTestSession: testVoiceSession,
-                  },
-                  localProvider: {
-                    busy: localProviderBusy,
-                    status: localProviderStatus,
-                    error: localProviderError,
-                    onInstall: installLocalProvider,
-                  },
-                })}
-                isExtensionConnected={(entry) => {
-                  const runtimeConnected = getExtensionConnected(entry, {
-                    openworkServerClient: selectedWorkspaceEndpoint?.client ?? openworkClient,
-                    extensionConnections: {
-                      "google-workspace": googleWorkspaceConnected,
-                    },
-                  });
-                  if (runtimeConnected !== null) return runtimeConnected;
-                  const id = entry.serverName ?? entry.name;
-                  if (id === "openai-image-gen") return imageExtensionInstalled;
-                  if (id === "ollama") return providerConnectedIds.includes("ollama");
-                  return false;
-                }}
+                configSlotForEntry={extensionController.configSlotForEntry}
+                isExtensionConnected={extensionController.isConnected}
                 authorizeMcp={(entry) => {
                   void connectionsStore.authorizeMcp(entry);
                 }}
@@ -2149,8 +2174,8 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
                     : undefined
                 }
                 readConfigFile={(scope) => connectionsStore.readMcpConfigFile(scope)}
-                installedSkills={extensionsStore.skills()}
-                installedPlugins={Object.values(extensionsStore.importedCloudPlugins())}
+                installedSkills={extensionItems.installedSkills}
+                installedPlugins={extensionItems.installedCloudPlugins}
                 uninstallSkill={(name) => { void extensionsStore.uninstallSkill(name); }}
                 removeCloudPlugin={(pluginId) => { void extensionsStore.removeCloudOrgPlugin(pluginId); }}
                 readSkill={(name) => extensionsStore.readSkill(name)}
@@ -2164,6 +2189,14 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
                 extensions={extensionsStore}
                 session={denSession}
                 onOpenAccount={openCloudAccountSettings}
+                builtInEntries={builtInMarketplaceEntries}
+                enablementContext={enablementContext}
+                builtInExtensionsDisabled={builtInExtensionsDisabled}
+                builtInConnectingName={connectionsSnapshot.mcpConnectingName}
+                configSlotForBuiltIn={extensionController.configSlotForEntry}
+                isBuiltInConnected={extensionController.isConnected}
+                extensionItems={extensionItems.items}
+                setBuiltInEnabled={setOpenWorkExtensionEnabled}
               />
             }
           />
@@ -2181,6 +2214,14 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
             extensions={extensionsStore}
             session={denSession}
             onOpenAccount={openCloudAccountSettings}
+            builtInEntries={builtInMarketplaceEntries}
+            enablementContext={enablementContext}
+            builtInExtensionsDisabled={builtInExtensionsDisabled}
+            builtInConnectingName={connectionsSnapshot.mcpConnectingName}
+            configSlotForBuiltIn={extensionController.configSlotForEntry}
+            isBuiltInConnected={extensionController.isConnected}
+            extensionItems={extensionItems.items}
+            setBuiltInEnabled={setOpenWorkExtensionEnabled}
           />
         );
       case "cloud-workers":
