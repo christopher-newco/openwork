@@ -167,7 +167,8 @@ export function WelcomeRoute() {
         }
         markOnboardingComplete();
         dispatch({ type: "close" });
-        navigate(targetWorkspaceId ? workspaceSessionRoute(targetWorkspaceId, targetSessionId) : "/session", { replace: true });
+        const sessionRoute = targetWorkspaceId ? workspaceSessionRoute(targetWorkspaceId, targetSessionId) : "/session";
+        navigate(`${sessionRoute}?onboarding=1`, { replace: true });
         if (targetSessionId) focusPromptSoon();
       } catch (error) {
         dispatch({

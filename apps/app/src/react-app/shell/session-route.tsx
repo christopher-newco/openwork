@@ -1622,6 +1622,23 @@ export function SessionRoute() {
     sessionProviderAuthStore,
   ]);
 
+  // After onboarding, auto-open the provider modal if no providers are connected.
+  // The welcome route appends ?onboarding=1 to the session URL after workspace creation.
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (!hash.includes("onboarding=1")) return;
+    // Strip the param so it doesn't re-trigger.
+    window.location.hash = hash.replace(/[?&]onboarding=1/, "");
+    // Give the provider store a moment to hydrate, then check.
+    const timer = window.setTimeout(() => {
+      if (providerConnectedIds.length === 0) {
+        sessionProviderAuthStore.openProviderAuthModal();
+      }
+    }, 1500);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Session is where forced sign-in lands. Keep org-managed cloud providers in
   // sync here so sign-in applies opencode.json changes before Settings opens.
   useCloudProviderAutoSync(sessionProviderAuthStore.runCloudProviderSync);
