@@ -20,10 +20,20 @@ import type {
 } from "../../../../app/types";
 import type { ShareWorkspaceModalProps } from "../../workspace/types";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { ConfirmModal } from "../../../design-system/modals/confirm-modal";
 import ProviderAuthModal, { type ProviderAuthModalProps } from "../../connections/provider-auth/provider-auth-modal";
 import { RenameSessionModal } from "../modals/rename-session-modal";
 import { AppSidebar } from "../sidebar/app-sidebar";
+import { useSessionManagementStore } from "../sidebar/session-management-store";
 import { SessionSurface, type SessionSurfaceProps } from "../surface/session-surface";
 import {
   SidebarInset,
@@ -158,6 +168,7 @@ export type SessionPageProps = {
   onOpenProviderAuth?: () => void;
   onRenameSession?: (sessionId: string, title: string) => Promise<void> | void;
   onDeleteSession?: (sessionId: string) => Promise<void> | void;
+  onArchiveSession?: (sessionId: string, archived: boolean) => Promise<void> | void;
   onAccessibleTargetsChange?: (targets: OpenTarget[]) => void;
   /** Settings content rendered inside the right pane when the settings rail icon is active. */
   settingsSlot?: React.ReactNode;
@@ -277,6 +288,9 @@ export function SessionPage(props: SessionPageProps) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [sessionActionId, setSessionActionId] = useState<string | null>(null);
+  const [createGroupOpen, setCreateGroupOpen] = useState(false);
+  const [createGroupLabel, setCreateGroupLabel] = useState("");
+  const [createGroupWorkspaceId, setCreateGroupWorkspaceId] = useState<string | null>(null);
   const browserPanelRef = usePanelRef();
   const preserveSidePanelOnPanelOpenRef = useRef(false);
 
@@ -628,7 +642,7 @@ export function SessionPage(props: SessionPageProps) {
           developerMode={props.sidebar.developerMode}
           selectedSessionId={props.sidebar.selectedSessionId}
           showInitialLoading={sidebarInitialLoading}
-          showSessionActions={Boolean(props.onRenameSession || props.onDeleteSession)}
+          showSessionActions={Boolean(props.onRenameSession || props.onDeleteSession || props.onArchiveSession)}
           sessionStatusById={props.sidebar.sessionStatusById}
           connectingWorkspaceId={props.sidebar.connectingWorkspaceId}
           workspaceConnectionStateById={props.sidebar.workspaceConnectionStateById}
@@ -642,6 +656,14 @@ export function SessionPage(props: SessionPageProps) {
             setSessionActionId(sessionId);
             setDeleteOpen(true);
           } : undefined}
+          onArchiveSession={props.onArchiveSession ? (sessionId, archived) => {
+            void props.onArchiveSession?.(sessionId, archived);
+          } : undefined}
+          onOpenCreateGroupModal={(workspaceId) => {
+            setCreateGroupWorkspaceId(workspaceId);
+            setCreateGroupLabel("");
+            setCreateGroupOpen(true);
+          }}
           onOpenRenameWorkspace={props.sidebar.onOpenRenameWorkspace}
           onShareWorkspace={props.sidebar.onShareWorkspace}
           onRevealWorkspace={props.sidebar.onRevealWorkspace}
@@ -1087,6 +1109,39 @@ export function SessionPage(props: SessionPageProps) {
           }}
         />
       ) : null}
+
+      <Dialog open={createGroupOpen} onOpenChange={(open) => { if (!open) setCreateGroupOpen(false); }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{t("session_management.new_group")}</DialogTitle>
+          </DialogHeader>
+          <Input
+            type="text"
+            value={createGroupLabel}
+            onChange={(e) => setCreateGroupLabel(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && createGroupLabel.trim()) {
+                if (createGroupWorkspaceId) useSessionManagementStore.getState().createGroup(createGroupWorkspaceId, createGroupLabel.trim());
+                setCreateGroupOpen(false);
+              }
+            }}
+            placeholder={t("session_management.new_group_prompt")}
+          />
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" type="button" />}>{t("common.cancel")}</DialogClose>
+            <Button
+              type="button"
+              disabled={!createGroupLabel.trim()}
+              onClick={() => {
+                if (createGroupWorkspaceId) useSessionManagementStore.getState().createGroup(createGroupWorkspaceId, createGroupLabel.trim());
+                setCreateGroupOpen(false);
+              }}
+            >
+              {t("common.save")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {props.shareWorkspaceModal ? <ShareWorkspaceModal {...props.shareWorkspaceModal} /> : null}
 

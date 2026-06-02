@@ -17,7 +17,8 @@ import type {
 } from "@opencode-ai/sdk/v2/client";
 
 import { createClient, unwrap } from "../../app/lib/opencode";
-import { forkSession, listCommands, revertSession, shellInSession } from "../../app/lib/opencode-session";
+import { forkSession, listCommands, revertSession, setSessionArchived, shellInSession } from "../../app/lib/opencode-session";
+import { useSessionManagementStore as sessionManagementStore } from "../domains/session/sidebar/session-management-store";
 import {
   buildOpenworkWorkspaceBaseUrl,
   createOpenworkServerClient,
@@ -2322,6 +2323,7 @@ export function SessionRoute() {
         navigate(legacySessionRoute());
       }
       forgetWorkspaceMemory(workspaceId);
+      sessionManagementStore.getState().forgetWorkspace(workspaceId);
       await refreshRouteState();
     },
     [client, navigate, refreshRouteState, selectedWorkspaceId],
@@ -2612,6 +2614,31 @@ export function SessionRoute() {
     writeWorkspaceOrderIds(nextOrderIds);
     setWorkspaces((current) => orderRouteWorkspaces(current, nextOrderIds));
   }, []);
+
+  const handleArchiveSession = useCallback(
+    async (sessionId: string, archived: boolean) => {
+      if (!opencodeClient) return;
+      try {
+        await setSessionArchived(
+          opencodeClient,
+          sessionId,
+          archived,
+          selectedWorkspaceRoot || undefined,
+        );
+        await refreshRouteState();
+      } catch (error) {
+        console.error("[session-route] archive session failed", error);
+        showToast({
+          title: archived
+            ? t("session_management.archive_failed")
+            : t("session_management.unarchive_failed"),
+          description: describeRouteError(error),
+          tone: "error",
+        });
+      }
+    },
+    [opencodeClient, refreshRouteState, selectedWorkspaceRoot, showToast],
+  );
 
   const handleCreateWorkspace = useCallback(async (preset: WorkspacePreset, folder: string | null) => {
     if (!folder) return;
@@ -2993,6 +3020,7 @@ export function SessionRoute() {
             }
           : undefined
       }
+      onArchiveSession={opencodeClient ? handleArchiveSession : undefined}
       statusBar={{ loading: showPreparingStatus }}
       notFoundMessage={routeNotFoundMessage}
       onAccessibleTargetsChange={setPaletteAccessibleTargets}
