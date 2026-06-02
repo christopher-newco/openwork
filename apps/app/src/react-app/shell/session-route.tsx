@@ -91,6 +91,7 @@ import {
   seedQuestionState,
   todoKey as reactTodoKey,
 } from "@/react-app/domains/session/sync/session-sync";
+import { firstLineLocalFileParts } from "@/react-app/domains/session/sync/prompt-file-parts";
 import { CreateRemoteWorkspaceModal } from "@/react-app/domains/workspace/create-remote-workspace-modal";
 import { CreateWorkspaceModal } from "@/react-app/domains/workspace/create-workspace-modal";
 import { createProviderAuthStore, useProviderAuthStoreSnapshot } from "@/react-app/domains/connections/provider-auth/store";
@@ -475,6 +476,8 @@ async function draftToParts(draft: ComposerDraft, workspaceRoot: string) {
       });
     }
   }
+
+  parts.push(...firstLineLocalFileParts(draft.resolvedText ?? draft.text, root));
 
   parts.push(
     ...(await Promise.all(
