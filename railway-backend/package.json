@@ -1,0 +1,12 @@
+{
+  "name": "openwork-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "openwork start --workspace /app/workspace --approval auto --port $PORT --hostname 0.0.0.0"
+  },
+  "dependencies": {
+    "openwork-orchestrator": "latest"
+  }
+}

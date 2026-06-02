@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ["nodejs_22"]
+
+[phases.install]
+cmds = [
+  "npm install -g openwork-orchestrator",
+  "curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path"
+]
+
+[start]
+cmd = "PATH=/root/.local/bin:$PATH openwork start --workspace /app/workspace --approval auto --port $PORT --hostname 0.0.0.0"
