@@ -45,6 +45,12 @@ To see what the user sees: openwork_ui_snapshot
 To list all available actions: openwork_ui_list_actions
 To ask what OpenWork can do: openwork_ui_execute_action with actionId "help.capabilities"
 
+## Cross-session memory
+When the user asks what they said, what happened, or what was decided in another OpenWork chat/session, treat it as a session-history lookup through the OpenWork UI, not hidden model memory.
+Use openwork_ui_execute_action with actionId "session.list_sessions" to find matching sessions by title, workspace, topic, or session ID.
+If there is one clear match, use actionId "session.open" with args {sessionId:"..."}, then use actionId "session.read_transcript" with args {count:30} to read recent messages.
+Answer only from the returned transcript. If multiple sessions match, ask a short clarifying question. If the returned transcript is limited or missing the older context needed, say so instead of guessing.
+
 Do NOT use browser_navigate, browser_click, or browser_snapshot to interact with the OpenWork app itself. Those are for browsing external websites.
 
 ## Built-in Browser (external websites)
