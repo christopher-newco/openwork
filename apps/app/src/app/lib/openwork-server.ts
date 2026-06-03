@@ -188,6 +188,38 @@ export type OpenworkAuthorizedFoldersUpdateResponse = {
   updatedAt: number;
 };
 
+export type OpenworkRuntimeConfigMigrationResult = {
+  migrated: boolean;
+  keys: string[];
+  legacyKeys: string[];
+  userOpencodeKeys: string[];
+  updatedAt: number | null;
+  legacyError?: string | null;
+};
+
+export type OpenworkRuntimeConfigStatus = {
+  runtime: Record<string, unknown>;
+  runtimeKeys: string[];
+  effectiveRuntime: Record<string, unknown>;
+  sources?: {
+    projectOpencode: { path: string; exists: boolean; keys: string[]; config: Record<string, unknown> };
+    globalOpencode: { path: string; exists: boolean; keys: string[]; config: Record<string, unknown> };
+    runtimeDatabase: { keys: string[]; config: Record<string, unknown> };
+    injected: { keys: string[]; config: Record<string, unknown> };
+  };
+  legacyOpenwork: {
+    path: string;
+    keys: string[];
+    error: string | null;
+  };
+  userOpencode: {
+    path: string;
+    exists: boolean;
+    keys: string[];
+    migratableKeys: string[];
+  };
+};
+
 export type OpenworkDesktopCloudSyncChange = {
   id: string;
   kind: "new" | "modified" | "removed";
@@ -1145,6 +1177,23 @@ export function createOpenworkServerClient(options: { baseUrl: string; token?: s
           body: { folders },
           timeoutMs: timeouts.config,
         },
+      ),
+    migrateRuntimeConfig: (workspaceId: string) =>
+      requestJson<OpenworkRuntimeConfigMigrationResult>(
+        baseUrl,
+        `/workspace/${encodeURIComponent(workspaceId)}/runtime-config/migrate`,
+        {
+          token,
+          hostToken,
+          method: "POST",
+          timeoutMs: timeouts.config,
+        },
+      ),
+    getRuntimeConfigStatus: (workspaceId: string) =>
+      requestJson<OpenworkRuntimeConfigStatus>(
+        baseUrl,
+        `/workspace/${encodeURIComponent(workspaceId)}/runtime-config`,
+        { token, hostToken, timeoutMs: timeouts.config },
       ),
     patchConfig: (workspaceId: string, payload: { opencode?: Record<string, unknown>; openwork?: Record<string, unknown> }) =>
       requestJson<{ updatedAt?: number | null }>(baseUrl, `/workspace/${workspaceId}/config`, {
