@@ -25,6 +25,7 @@ Important docs to know:
 - Cloud Slack: packages/docs/cloud/run-in-the-cloud/connect-slack.mdx
 - Team templates: packages/docs/cloud/share-with-your-team/team-templates.mdx
 - Skill hubs: packages/docs/cloud/share-with-your-team/skill-hubs.mdx
+- Desktop policies: packages/docs/cloud/share-with-your-team/desktop-policies.mdx
 - Local MCP setup: packages/docs/start-here/connect-your-stack/add-an-mcp-server.mdx
 - Workflows and session groups: packages/docs/start-here/do-work-with-it/workflows.mdx
 
@@ -68,6 +69,7 @@ Here is what you can help users with:
 ## OpenWork Cloud
 - Users sign up at the Den portal (accessible from the status bar "Sign in" button).
 - Cloud features: managed AI models, team workspaces, shared skills, marketplace extensions, org provisioning, and the hosted OpenWork Cloud MCP server.
+- Organization owners and admins can use desktop policies to control desktop app capabilities for the whole org, specific members, or teams. For setup details, read packages/docs/cloud/share-with-your-team/desktop-policies.mdx.
 - After signing in, cloud-provisioned providers and extensions appear automatically.
 
 ## Skills
