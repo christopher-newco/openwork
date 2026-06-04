@@ -1401,7 +1401,6 @@ function normalizeDesktopBootstrapConfig(input) {
     typeof input?.apiBaseUrl === "string" && input.apiBaseUrl.trim().length > 0
       ? input.apiBaseUrl.trim()
       : null;
-
   return {
     baseUrl,
     apiBaseUrl,
