@@ -76,16 +76,26 @@ export function ConnectScreen() {
     const connect = async () => {
       try {
         // Generate token if needed
+        let tokens = activeWorker;
         if (!activeWorker?.clientToken && !activeWorker?.ownerToken) {
           setStatus("Generating access token...");
-          await generateWorkerToken();
+          const newTokens = await generateWorkerToken();
+          if (!newTokens) {
+            setError("Failed to generate access token");
+            setStatus("Token generation failed");
+            return;
+          }
+          tokens = {
+            ...activeWorker,
+            ...newTokens,
+          };
         }
 
         // Build connect URL
         const connectUrl = buildOpenworkAppConnectUrl(
           OPENWORK_APP_CONNECT_BASE_URL,
-          activeWorker?.openworkUrl || worker.instanceUrl,
-          activeWorker?.clientToken || activeWorker?.ownerToken || null,
+          tokens?.openworkUrl || worker.instanceUrl,
+          tokens?.clientToken || tokens?.ownerToken || null,
           worker.workerId,
           worker.workerName,
           { autoConnect: true }

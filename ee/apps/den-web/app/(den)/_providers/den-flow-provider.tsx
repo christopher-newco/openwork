@@ -136,7 +136,7 @@ type DenFlowContextValue = {
   refreshWorkers: (options?: { keepSelection?: boolean; quiet?: boolean }) => Promise<void>;
   launchWorker: (options?: { source?: "manual" | "signup_auto"; workerNameOverride?: string }) => Promise<LaunchWorkerResult>;
   checkWorkerStatus: (options?: { workerId?: string; quiet?: boolean; background?: boolean }) => Promise<void>;
-  generateWorkerToken: () => Promise<void>;
+  generateWorkerToken: () => Promise<WorkerTokens | null>;
   renameWorker: (workerId: string, name: string) => Promise<boolean>;
   deleteWorker: (workerId: string) => Promise<void>;
   redeployWorker: (workerId: string) => Promise<void>;
@@ -1452,16 +1452,16 @@ export function DenFlowProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  async function generateWorkerToken() {
+  async function generateWorkerToken(): Promise<WorkerTokens | null> {
     if (!user) {
       setLaunchError("Sign in before fetching a worker access token.");
-      return;
+      return null;
     }
 
     const id = workerLookupId.trim() || worker?.workerId || workers[0]?.workerId || "";
     if (!id) {
       setLaunchError("No worker selected yet. Launch one first, then fetch a token.");
-      return;
+      return null;
     }
 
     setWorkerLookupId(id);
@@ -1479,14 +1479,14 @@ export function DenFlowProvider({ children }: { children: ReactNode }) {
         const message = getErrorMessage(payload, `Token fetch failed with ${response.status}.`);
         setLaunchError(message);
         appendEvent("error", "Token fetch failed", message);
-        return;
+        return null;
       }
 
       const tokens = getWorkerTokens(payload);
       if (!tokens) {
         setLaunchError("Token response returned no token values.");
         appendEvent("error", "Token fetch failed", "Missing token payload");
-        return;
+        return null;
       }
 
       const nextWorker: WorkerLaunch =
@@ -1517,10 +1517,12 @@ export function DenFlowProvider({ children }: { children: ReactNode }) {
       setPendingRestoredWorkerId(null);
       setLaunchStatus("Worker is ready to connect.");
       appendEvent("success", "Owner token ready", `Worker ID ${id}`);
+      return tokens;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown network error";
       setLaunchError(message);
       appendEvent("error", "Token fetch failed", message);
+      return null;
     } finally {
       setActionBusy(null);
     }
