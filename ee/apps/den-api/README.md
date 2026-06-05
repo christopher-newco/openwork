@@ -60,3 +60,4 @@ Each major folder also has its own `README.md` so future agents can inspect one 
 2. Add endpoints in focused Hono route groups one surface at a time.
 3. Reuse shared middleware and Zod validators instead of duplicating request/session/org plumbing.
 4. Leave a short README in each route area when the structure changes so later agents can recover context fast.
+# Trigger rebuild Fri Jun  5 01:50:08 UTC 2026

@@ -28,3 +28,4 @@ RUN pnpm run build
 EXPOSE 3000
 
 CMD ["pnpm", "run", "start"]
+# Docker build for Railway - 1780624385
