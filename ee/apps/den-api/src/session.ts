@@ -195,6 +195,13 @@ export async function getRequestSession(headers: Headers): Promise<AuthSessionLi
   let cookieSession: AuthSessionLike
   try {
     cookieSession = await auth.api.getSession({ headers })
+    console.log("[getRequestSession] Better Auth session:", {
+      hasSession: !!cookieSession,
+      hasUser: !!cookieSession?.user,
+      hasUserId: !!cookieSession?.user?.id,
+      userId: cookieSession?.user?.id,
+      cookies: headers.get("cookie")?.substring(0, 100),
+    })
   } catch (error) {
     console.error("[getRequestSession] Better Auth session validation failed:", error)
     return null
@@ -209,6 +216,8 @@ export async function getRequestSession(headers: Headers): Promise<AuthSessionLi
       },
     }
   }
+
+  console.warn("[getRequestSession] Better Auth session exists but has no user.id, falling through to Bearer token check")
 
   const bearerToken = readBearerToken(headers)
   if (!bearerToken) {
