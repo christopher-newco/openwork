@@ -1,4 +1,4 @@
-FROM node:22-bookworm-slim
+FROM node:22-bookworm-slim AS builder
 
 RUN corepack enable
 
@@ -18,6 +18,18 @@ COPY apps/app /app/apps/app
 
 RUN pnpm --filter @openwork/app build:web
 
+# Production stage - serve static files
+FROM node:22-bookworm-slim
+
+WORKDIR /app
+
+# Install serve globally for static file serving
+RUN npm install -g serve
+
+# Copy built files from builder
+COPY --from=builder /app/apps/app/dist /app/dist
+
 EXPOSE 5173
 
-CMD ["pnpm", "--filter", "@openwork/app", "preview", "--host", "0.0.0.0", "--port", "5173"]
+# Serve the built files
+CMD ["serve", "-s", "dist", "-l", "5173"]
