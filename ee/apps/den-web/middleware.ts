@@ -44,7 +44,7 @@ function hasAuthToken(request: NextRequest): boolean {
   return false;
 }
 
-export function proxy(request: NextRequest) {
+export function middleware(request: NextRequest) {
   const url = request.nextUrl.clone();
   const { pathname } = url;
 
