@@ -1,19 +1,19 @@
 /** @jsxImportSource react */
 import * as React from "react";
+import { toast } from "@/components/ui/sonner";
 
-import type { McpDirectoryInfo } from "../../../../app/constants";
-import type { CloudImportedPlugin } from "../../../../app/cloud/import-state";
-import { evaluateEnablement, type EnablementContext } from "../../../../app/enablement";
-import type { DenOrgMarketplaceResolved, DenOrgPlugin, DenOrgPluginResolved } from "../../../../app/lib/den";
+import type { McpDirectoryInfo } from "@/app/constants";
+import type { CloudImportedPlugin } from "@/app/cloud/import-state";
+import { evaluateEnablement, type EnablementContext } from "@/app/enablement";
+import type { DenOrgMarketplaceResolved, DenOrgPlugin, DenOrgPluginResolved } from "@/app/lib/den";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { t } from "@/i18n";
-import { ExtensionCard } from "../../../design-system/extension-card";
-import { ExtensionDetailModal } from "../../../design-system/extension-detail-modal";
-import { isToggleControlledExtension, type ExtensionItem } from "../extension-items";
-import { useStatusToasts } from "../../shell-feedback/status-toasts";
-import { useCloudSession } from "../cloud/cloud-session-provider";
-import type { useDenSession } from "../cloud/use-den-session";
+import { ExtensionCard } from "@/react-app/design-system/extension-card";
+import { ExtensionDetailModal } from "@/react-app/design-system/extension-detail-modal";
+import { isToggleControlledExtension, type ExtensionItem } from "@/react-app/domains/settings/extension-items";
+import { useCloudSession } from "@/react-app/domains/settings/cloud/cloud-session-provider";
+import type { useDenSession } from "@/react-app/domains/settings/cloud/use-den-session";
 import {
   RefreshButton,
   SettingsNotice,
@@ -25,11 +25,11 @@ import {
   SettingsSectionHeaderDescription,
   SettingsSectionHeaderTitle,
   SettingsStack,
-} from "../settings-section";
+} from "@/react-app/domains/settings/settings-section";
 import {
   SettingsListEmptyState,
   SettingsListSearchInput,
-} from "../settings-list";
+} from "@/react-app/domains/settings/settings-list";
 
 type AsyncResult = { ok: boolean; message: string };
 type MarketplacePackageStatus = "available" | "installed" | "update_available";
@@ -92,11 +92,39 @@ function pluginCounts(plugin: DenOrgPlugin) {
 }
 
 function pluginComposition(plugin: DenOrgPlugin) {
-  return Object.entries(plugin.componentCounts).flatMap(([type, count]) => {
+  const componentEntries = Object.entries(plugin.componentCounts).flatMap(([type, count]) => {
     if (count <= 0) return [];
     const label = type === "mcp" ? "MCP" : type;
     return [{ count, label, type }];
   });
+  if (componentEntries.length > 0) return componentEntries;
+
+  const manifestResources = plugin.extension?.manifest?.resources ?? [];
+  const counts = manifestResources.reduce((accumulator, resource) => {
+    accumulator.set(resource.type, (accumulator.get(resource.type) ?? 0) + 1);
+    return accumulator;
+  }, new Map<string, number>());
+  return [...counts.entries()].map(([type, count]) => ({
+    count,
+    label: type === "mcp" ? "MCP" : type,
+    type,
+  }));
+}
+
+function isCloudBuiltInPlugin(plugin: DenOrgPlugin) {
+  return plugin.extension?.sourceFormat === "openwork-builtin";
+}
+
+function pluginManifestSearchText(plugin: DenOrgPlugin) {
+  const manifest = plugin.extension?.manifest;
+  if (!manifest) return "";
+  return [
+    manifest.name,
+    manifest.description,
+    manifest.setup?.instructions ?? "",
+    ...(manifest.resources.map((resource) => `${resource.id} ${resource.label ?? ""} ${resource.description ?? ""}`)),
+    ...(manifest.contributions?.map((contribution) => `${contribution.ref ?? ""} ${contribution.label ?? ""}`) ?? []),
+  ].join(" ");
 }
 
 function pluginStatus(imported: CloudImportedPlugin | null, plugin: DenOrgPlugin): MarketplacePackageStatus {
@@ -143,7 +171,6 @@ export function CloudMarketplacesView({
   setBuiltInEnabled,
 }: CloudMarketplacesViewProps) {
   const { activeOrganization: activeOrg, authToken, client, isSignedIn, user } = useCloudSession();
-  const { showToast } = useStatusToasts();
   const [busy, setBusy] = React.useState(false);
   const [actionId, setActionId] = React.useState<string | null>(null);
   const [actionError, setActionError] = React.useState<string | null>(null);
@@ -171,7 +198,7 @@ export function CloudMarketplacesView({
       const composition = pluginComposition(plugin);
       const counts = pluginCounts(plugin);
       const item = extensionItemsByPluginId.get(plugin.id);
-      const status = item?.installState ?? pluginStatus(imported, plugin);
+      const status = item?.installState ?? (isCloudBuiltInPlugin(plugin) ? "installed" : pluginStatus(imported, plugin));
       return {
         source: "cloud",
         marketplaceId: marketplace.marketplace.id,
@@ -185,6 +212,7 @@ export function CloudMarketplacesView({
           plugin.name,
           plugin.description ?? "",
           marketplace.marketplace.name,
+          pluginManifestSearchText(plugin),
           ...counts,
           ...(imported?.files.map((file) => `${file.title} ${file.objectType} ${file.path}`) ?? []),
         ].join(" ").toLowerCase(),
@@ -254,12 +282,11 @@ export function CloudMarketplacesView({
         await extensions.refreshCloudOrgMarketplaces({ force: true });
         if (!quiet) {
           const count = extensions.cloudOrgMarketplaces().reduce((total, marketplace) => total + marketplace.plugins.length, 0);
-          showToast({
-            title: count > 0
+          toast.info(
+            count > 0
               ? `Loaded ${count} marketplace extension${count === 1 ? "" : "s"} for ${activeOrg?.name ?? t("den.active_org_title")}.`
               : `No marketplace extensions are available for ${activeOrg?.name ?? t("den.active_org_title")}.`,
-            tone: "info",
-          });
+          );
         }
       } catch (error) {
         if (!quiet) {
@@ -275,7 +302,6 @@ export function CloudMarketplacesView({
       activeOrgId,
       authToken,
       session.syncCurrentDenSettings,
-      showToast,
     ],
   );
 
@@ -318,14 +344,15 @@ export function CloudMarketplacesView({
       try {
         const result = await extensions.importCloudOrgPlugin(marketplaceId, plugin);
         if (!result.ok) throw new Error(result.message);
-        showToast({ title: `${result.message} ${t("den.reload_workspace")}`, tone: "success" });
+        toast.success(result.message);
+        setDetailRow(null);
       } catch (error) {
         setActionError(error instanceof Error ? error.message : `Failed to add ${plugin.name}.`);
       } finally {
         setActionId(null);
       }
     },
-    [actionId, extensions, showToast],
+    [actionId, extensions],
   );
 
   const removePlugin = React.useCallback(
@@ -338,14 +365,15 @@ export function CloudMarketplacesView({
       try {
         const result = await extensions.removeCloudOrgPlugin(pluginId);
         if (!result.ok) throw new Error(result.message);
-        showToast({ title: result.message, tone: "success" });
+        toast.success(result.message);
+        setDetailRow(null);
       } catch (error) {
         setActionError(error instanceof Error ? error.message : `Failed to remove ${pluginName}.`);
       } finally {
         setActionId(null);
       }
     },
-    [actionId, extensions, showToast],
+    [actionId, extensions],
   );
 
   const content = (
@@ -371,7 +399,7 @@ export function CloudMarketplacesView({
       {!isSignedIn ? (
         <SettingsNotice>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <span>Sign in to OpenWork Cloud to browse organization marketplace extensions. Built-ins are still available.</span>
+            <span>You can use OpenWork without an account. Sign in to OpenWork Cloud to load the Marketplace, including OpenWork's built-in extensions and any organization marketplaces.</span>
             <Button size="sm" onClick={onOpenAccount}>
               {t("skills.share_team_sign_in")}
             </Button>
@@ -526,16 +554,20 @@ function MarketplaceCard(props: {
   }
 
   const actionBusy = actionId === row.plugin.id;
+  const manifest = row.plugin.extension?.manifest;
+  const cloudBuiltIn = isCloudBuiltInPlugin(row.plugin);
 
   return (
     <ExtensionCard
       name={row.plugin.name}
       description={row.plugin.description || `Marketplace extension from ${row.marketplaceName}.`}
+      iconSlug={manifest?.icon?.simpleIconSlug}
+      iconSrc={manifest?.icon?.src}
       kind="extension"
-      connected={Boolean(row.imported)}
-      connectedLabel="Installed"
+      connected={cloudBuiltIn || Boolean(row.imported)}
+      connectedLabel={cloudBuiltIn ? "Built-in" : "Installed"}
       connecting={actionBusy}
-      actionLabel={actionBusy ? "Working..." : actionLabelForStatus(row.status)}
+      actionLabel={cloudBuiltIn ? "View details" : actionBusy ? "Working..." : actionLabelForStatus(row.status)}
       onClick={() => onOpenDetail(row)}
     />
   );
@@ -593,7 +625,9 @@ function MarketplacePackageDetailModal(props: {
 }) {
   const { actionId, row, resolved, resolving, resolveError, onClose, onImportPlugin, onRemovePlugin } = props;
   const actionBusy = actionId === row.plugin.id;
-  const canAddOrUpdate = row.status === "available" || row.status === "update_available";
+  const cloudBuiltIn = isCloudBuiltInPlugin(row.plugin);
+  const manifest = row.plugin.extension?.manifest;
+  const canAddOrUpdate = !cloudBuiltIn && (row.status === "available" || row.status === "update_available");
 
   return (
     <ExtensionDetailModal
@@ -601,20 +635,25 @@ function MarketplacePackageDetailModal(props: {
       onClose={onClose}
       name={row.plugin.name}
       description={row.plugin.description || "No description provided."}
+      iconSlug={manifest?.icon?.simpleIconSlug}
+      iconSrc={manifest?.icon?.src}
       kind="extension"
-      connected={Boolean(row.imported)}
-      connectedLabel="Installed"
+      connected={cloudBuiltIn || Boolean(row.imported)}
+      connectedLabel={cloudBuiltIn ? "Built-in" : "Installed"}
       connecting={actionBusy}
       connectLabel={row.status === "update_available" ? "Update" : "Add"}
       connectingLabel={row.status === "update_available" ? "Updating..." : "Adding..."}
       uninstallLabel="Remove"
       showEnablementCard={false}
+      setupInstructions={manifest?.setup?.instructions}
+      resourceLabels={manifest?.resources.map((resource) => resource.label ?? resource.id) ?? []}
+      contributionLabels={manifest?.contributions?.map((contribution) => contribution.label ?? contribution.ref ?? contribution.type) ?? []}
       onConnect={canAddOrUpdate ? () => void onImportPlugin(row.marketplaceId, row.plugin) : undefined}
-      onUninstall={row.imported ? () => void onRemovePlugin(row.plugin.id, row.plugin.name) : undefined}
+      onUninstall={!cloudBuiltIn && row.imported ? () => void onRemovePlugin(row.plugin.id, row.plugin.name) : undefined}
       configSlot={(
         <div className="space-y-4">
           <div className="flex flex-wrap gap-2">
-            <SettingsPill className={statusClass(row.status)}>{statusLabel(row.status)}</SettingsPill>
+            <SettingsPill className={statusClass(row.status)}>{cloudBuiltIn ? "Built-in" : statusLabel(row.status)}</SettingsPill>
             <SettingsPill>{row.marketplaceName}</SettingsPill>
             {row.counts.map((label) => <SettingsPill key={label}>{label}</SettingsPill>)}
           </div>

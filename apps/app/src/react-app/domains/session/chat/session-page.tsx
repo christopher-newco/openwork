@@ -2,7 +2,7 @@
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePanelRef } from "react-resizable-panels";
-import { FileText, Globe, Mic2, Settings2, Zap } from "lucide-react";
+import { Columns2, FileText, Globe, Mic2, Settings2, X, Zap } from "lucide-react";
 
 import { t } from "../../../../i18n";
 import { OPENWORK_EXTENSION_CATALOG } from "../../../../app/constants";
@@ -69,6 +69,11 @@ const STARTUP_SKELETON_ROWS = [
 ];
 const GLOBAL_VOICE_SIDE_PANEL_KEY = "__openwork_voice__";
 const EMPTY_TRANSCRIPT_TARGETS: OpenTarget[] = [];
+
+type OpenSessionTab = {
+  workspaceId: string;
+  sessionId: string;
+};
 
 type StatusBarOverrides = Pick<
   StatusBarProps,
@@ -145,6 +150,7 @@ export type SessionPageProps = {
   busyHint: string | null;
   startupPhase: BootPhase;
   providerConnectedIds: string[];
+  hasUsableModel?: boolean;
   providers?: ProviderListItem[];
   mcpConnectedCount: number;
   onSendFeedback: () => void;
@@ -198,6 +204,13 @@ function sessionTitleForId(groups: WorkspaceSessionGroup[], id: string | null | 
   return match ? getDisplaySessionTitle(match.title) : "";
 }
 
+function sessionExistsInWorkspace(groups: WorkspaceSessionGroup[], workspaceId: string, sessionId: string | null | undefined) {
+  if (!sessionId) return false;
+  return groups.some((group) => (
+    group.workspace.id === workspaceId && group.sessions.some((session) => session.id === sessionId)
+  ));
+}
+
 function isTrackableAccessibleTarget(target: OpenTarget) {
   return isCollectibleArtifactTarget(target) || isLocalhostBrowserTarget(target);
 }
@@ -229,6 +242,16 @@ function writeHiddenAccessibleTargetIds(workspaceId: string | null | undefined, 
   } catch {
     // ignore storage failures
   }
+}
+
+function controlObjectArg(args: unknown) {
+  return args && typeof args === "object" && !Array.isArray(args) ? args : null;
+}
+
+function controlStringArg(args: unknown, key: string) {
+  const object = controlObjectArg(args);
+  const value = object ? Reflect.get(object, key) : null;
+  return typeof value === "string" ? value.trim() : "";
 }
 
 export function SessionPage(props: SessionPageProps) {
@@ -288,6 +311,8 @@ export function SessionPage(props: SessionPageProps) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [sessionActionId, setSessionActionId] = useState<string | null>(null);
+  const [sessionTabs, setSessionTabs] = useState<OpenSessionTab[]>([]);
+  const [splitSessionId, setSplitSessionId] = useState<string | null>(null);
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [createGroupLabel, setCreateGroupLabel] = useState("");
   const [createGroupWorkspaceId, setCreateGroupWorkspaceId] = useState<string | null>(null);
@@ -356,7 +381,7 @@ export function SessionPage(props: SessionPageProps) {
     if (/^wss?:\/\//i.test(target.value)) return target.value.replace(/^ws:/i, "http:").replace(/^wss:/i, "https:");
     return target.value;
   }, []);
-  const openTarget = useCallback((target: OpenTarget, options?: { auto?: boolean }) => {
+  const openTarget = useCallback((target: OpenTarget, options?: { auto?: boolean }, sourceSessionId?: string) => {
     if (target.kind === "url" || target.preview === "browser") {
       const url = browserUrlForTarget(target);
       if (isElectronRuntime()) {
@@ -367,9 +392,10 @@ export function SessionPage(props: SessionPageProps) {
       }
       return;
     }
-    if (!props.selectedSessionId || !isCollectibleArtifactTarget(target)) return;
+    const sessionId = sourceSessionId ?? props.selectedSessionId;
+    if (!sessionId || !isCollectibleArtifactTarget(target)) return;
     if (options?.auto && activePanelTab?.id === target.id) return;
-    openTab(props.selectedSessionId, {
+    openTab(sessionId, {
       id: target.id,
       type: "artifact",
       label: target.name,
@@ -394,6 +420,30 @@ export function SessionPage(props: SessionPageProps) {
     }
     toggleCurrentSidePanel("panel");
   }, [panelRailActive, sessionPanelState.tabs, toggleCurrentSidePanel]);
+  const openBrowserUrlControlAction = useMemo<OpenworkControlAction>(() => ({
+    id: "browser.open_url",
+    label: "Open URL in built-in browser",
+    description: "Create or select an OpenWork built-in browser tab, navigate it to a URL, and return the CDP handle for browser automation.",
+    sideEffect: "navigation",
+    requiresArgs: true,
+    args: [
+      { name: "url", type: "string", required: true, description: "The website URL to open." },
+      { name: "provider", type: "string", description: "Browser provider. Use builtin or auto. External is reserved for future support." },
+    ],
+    previewArgs: { url: "https://example.com", provider: "builtin" },
+    disabled: !isElectronRuntime(),
+    execute: async (args) => {
+      const url = controlStringArg(args, "url");
+      if (!url) return { ok: false, error: "Missing URL." };
+      const provider = controlStringArg(args, "provider") || "builtin";
+      if (provider !== "auto" && provider !== "builtin") {
+        return { ok: false, error: `Browser provider is not available yet: ${provider}` };
+      }
+      setCurrentSidePanel("panel");
+      return window.__OPENWORK_ELECTRON__?.browser?.openUrl?.(url, provider);
+    },
+  }), [setCurrentSidePanel]);
+  useControlAction(openBrowserUrlControlAction);
   const openArtifactRailPane = useCallback(() => {
     if (!hasArtifactTargets || !props.selectedSessionId) return;
     const activeTab = sessionPanelState.tabs.find((tab) => tab.id === sessionPanelState.activeTabId);
@@ -511,6 +561,28 @@ export function SessionPage(props: SessionPageProps) {
     () => sessionTitleForId(props.sidebar.workspaceSessionGroups, props.selectedSessionId),
     [props.selectedSessionId, props.sidebar.workspaceSessionGroups],
   );
+  useEffect(() => {
+    setSessionTabs((current) => {
+      const currentWorkspaceTabs = current.filter((tab) => tab.workspaceId === props.selectedWorkspaceId);
+      const next = props.selectedSessionId && !currentWorkspaceTabs.some((tab) => tab.sessionId === props.selectedSessionId)
+        ? [...currentWorkspaceTabs, { workspaceId: props.selectedWorkspaceId, sessionId: props.selectedSessionId }]
+        : currentWorkspaceTabs;
+      return next.filter((tab) => (
+        tab.sessionId === props.selectedSessionId ||
+        sessionExistsInWorkspace(props.sidebar.workspaceSessionGroups, tab.workspaceId, tab.sessionId)
+      ));
+    });
+  }, [props.selectedSessionId, props.selectedWorkspaceId, props.sidebar.workspaceSessionGroups]);
+  useEffect(() => {
+    if (!splitSessionId) return;
+    if (splitSessionId === props.selectedSessionId) {
+      setSplitSessionId(null);
+      return;
+    }
+    if (!sessionExistsInWorkspace(props.sidebar.workspaceSessionGroups, props.selectedWorkspaceId, splitSessionId)) {
+      setSplitSessionId(null);
+    }
+  }, [props.selectedSessionId, props.selectedWorkspaceId, props.sidebar.workspaceSessionGroups, splitSessionId]);
   const sessionActionTitle = useMemo(
     () => sessionTitleForId(props.sidebar.workspaceSessionGroups, sessionActionId),
     [props.sidebar.workspaceSessionGroups, sessionActionId],
@@ -519,7 +591,7 @@ export function SessionPage(props: SessionPageProps) {
     props.selectedWorkspaceDisplay.displayName?.trim() ||
     props.selectedWorkspaceDisplay.name?.trim() ||
     t("session.workspace_fallback");
-  const providerCount = props.providerConnectedIds.length;
+  const providerCount = props.hasUsableModel ? 1 : props.providerConnectedIds.length;
   const messageCountVisible = props.selectedSessionId ? 1 : 0;
   const showWorkspaceSetupEmptyState = props.workspaces.length === 0 && !props.selectedSessionId;
   const showStartupSkeleton =
@@ -571,6 +643,29 @@ export function SessionPage(props: SessionPageProps) {
       reactSessionToken &&
       props.surface,
   );
+  const canRenderSplitSurface = Boolean(canRenderReactSurface && splitSessionId && splitSessionId !== props.selectedSessionId);
+
+  const openSessionTab = useCallback((workspaceId: string, sessionId: string) => {
+    setSessionTabs((current) => {
+      const next = current.filter((tab) => tab.workspaceId === workspaceId);
+      if (next.some((tab) => tab.sessionId === sessionId)) return next;
+      return [...next, { workspaceId, sessionId }];
+    });
+    props.sidebar.onOpenSession(workspaceId, sessionId);
+  }, [props.sidebar]);
+
+  const closeSessionTab = useCallback((sessionId: string) => {
+    setSessionTabs((current) => current.filter((tab) => tab.sessionId !== sessionId));
+    setSplitSessionId((current) => current === sessionId ? null : current);
+    if (sessionId !== props.selectedSessionId) return;
+
+    const nextTab = sessionTabs.find((tab) => tab.sessionId !== sessionId && tab.workspaceId === props.selectedWorkspaceId);
+    if (nextTab) {
+      props.sidebar.onOpenSession(nextTab.workspaceId, nextTab.sessionId);
+      return;
+    }
+    props.sidebar.onSelectWorkspace(props.selectedWorkspaceId);
+  }, [props.selectedSessionId, props.selectedWorkspaceId, props.sidebar, sessionTabs]);
 
   useEffect(() => {
     if (!showSessionLoadingState) {
@@ -648,7 +743,7 @@ export function SessionPage(props: SessionPageProps) {
           workspaceConnectionStateById={props.sidebar.workspaceConnectionStateById}
           newTaskDisabled={props.sidebar.newTaskDisabled}
           onSelectWorkspace={props.sidebar.onSelectWorkspace}
-          onOpenSession={props.sidebar.onOpenSession}
+          onOpenSession={openSessionTab}
           onPrefetchSession={props.sidebar.onPrefetchSession}
           onCreateTaskInWorkspace={props.sidebar.onCreateTaskInWorkspace}
           onOpenRenameSession={props.onRenameSession ? openRenameModal : undefined}
@@ -773,29 +868,98 @@ export function SessionPage(props: SessionPageProps) {
               ) : null}
 
               {!showDelayedSessionLoadingState && canRenderReactSurface ? (
-                <SessionSurface
-                  // Spread `surface` first so the explicit per-workspace
-                  // routing props below CAN'T be silently overridden by
-                  // anything that leaks into `surface`. SessionSurface's
-                  // server target (client/workspaceId/sessionId/opencodeBaseUrl/openworkToken)
-                  // must come from the resolved workspace endpoint passed by
-                  // SessionRoute, not from anything in `surface`.
-                  {...props.surface!}
-                  client={props.openworkServerClient!}
-                  workspaceId={props.runtimeWorkspaceId!}
-                  sessionId={props.selectedSessionId!}
-                  opencodeBaseUrl={reactSessionBaseUrl}
-                  openworkToken={reactSessionToken}
-                  todos={props.todos}
-                  activePermission={props.activePermission}
-                  permissionReplyBusy={props.permissionReplyBusy}
-                  respondPermission={props.respondPermission}
-                  activeQuestion={props.activeQuestion}
-                  questionReplyBusy={props.questionReplyBusy}
-                  respondQuestion={props.respondQuestion}
-                  safeStringify={props.safeStringify}
-                  onOpenTarget={openTarget}
-                />
+                <div className="flex h-full min-h-0 flex-col">
+                  {sessionTabs.length > 0 ? (
+                    <div className="flex h-10 shrink-0 items-center gap-1 overflow-x-auto border-b border-border bg-background/80 px-2 mac:backdrop-blur-xl">
+                      {sessionTabs.map((tab) => {
+                        const title = sessionTitleForId(props.sidebar.workspaceSessionGroups, tab.sessionId) || t("session.default_title");
+                        const active = tab.sessionId === props.selectedSessionId;
+                        const split = tab.sessionId === splitSessionId;
+                        return (
+                          <div
+                            key={tab.sessionId}
+                            className={cn(
+                              "group flex max-w-56 shrink-0 items-center gap-1 rounded-lg border px-2 py-1 text-xs transition-colors",
+                              active
+                                ? "border-border bg-dls-surface text-dls-text shadow-sm"
+                                : "border-transparent text-dls-secondary hover:bg-dls-hover hover:text-dls-text",
+                              split && "border-primary/30 bg-primary/10 text-primary",
+                            )}
+                          >
+                            <button
+                              type="button"
+                              className="min-w-0 flex-1 truncate text-left"
+                              onClick={() => props.sidebar.onOpenSession(tab.workspaceId, tab.sessionId)}
+                              title={title}
+                            >
+                              {title}
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded p-0.5 text-dls-secondary hover:bg-dls-hover hover:text-dls-text disabled:pointer-events-none disabled:opacity-40"
+                              onClick={() => setSplitSessionId(split ? null : tab.sessionId)}
+                              disabled={active}
+                              title={split ? "Close split" : "Open in split view"}
+                              aria-label={split ? "Close split" : "Open in split view"}
+                            >
+                              <Columns2 size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded p-0.5 text-dls-secondary opacity-80 hover:bg-dls-hover hover:text-dls-text group-hover:opacity-100"
+                              onClick={() => closeSessionTab(tab.sessionId)}
+                              title="Close tab"
+                              aria-label="Close tab"
+                            >
+                              <X size={13} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                  <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+                    <div className={cn("min-h-0 min-w-0 flex-1", canRenderSplitSurface && "lg:border-r lg:border-border")}>
+                      <SessionSurface
+                        // Spread `surface` first so the explicit per-workspace
+                        // routing props below CAN'T be silently overridden by
+                        // anything that leaks into `surface`. SessionSurface's
+                        // server target (client/workspaceId/sessionId/opencodeBaseUrl/openworkToken)
+                        // must come from the resolved workspace endpoint passed by
+                        // SessionRoute, not from anything in `surface`.
+                        {...props.surface!}
+                        client={props.openworkServerClient!}
+                        workspaceId={props.runtimeWorkspaceId!}
+                        sessionId={props.selectedSessionId!}
+                        opencodeBaseUrl={reactSessionBaseUrl}
+                        openworkToken={reactSessionToken}
+                        todos={props.todos}
+                        activePermission={props.activePermission}
+                        permissionReplyBusy={props.permissionReplyBusy}
+                        respondPermission={props.respondPermission}
+                        activeQuestion={props.activeQuestion}
+                        questionReplyBusy={props.questionReplyBusy}
+                        respondQuestion={props.respondQuestion}
+                        safeStringify={props.safeStringify}
+                        onOpenTarget={openTarget}
+                      />
+                    </div>
+                    {canRenderSplitSurface ? (
+                      <div className="min-h-0 min-w-0 flex-1 border-t border-border lg:border-t-0">
+                        <SessionSurface
+                          {...props.surface!}
+                          client={props.openworkServerClient!}
+                          workspaceId={props.runtimeWorkspaceId!}
+                          sessionId={splitSessionId!}
+                          opencodeBaseUrl={reactSessionBaseUrl}
+                          openworkToken={reactSessionToken}
+                          todos={[]}
+                          onOpenTarget={openTarget}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
               ) : null}
 
               {!showDelayedSessionLoadingState && !canRenderReactSurface && !showStartupSkeleton ? (

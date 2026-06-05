@@ -33,11 +33,34 @@ const uiExecuteArgsSchema = z.object({
   args: z.record(z.string(), z.unknown()).optional().describe("JSON arguments for the action, if required."),
 });
 
+const browserOpenUrlArgsSchema = z.object({
+  url: z.string().describe("The website URL to open in the OpenWork built-in browser."),
+  provider: z.enum(["auto", "builtin", "external"]).optional().describe("Browser provider. Use builtin or auto; external is reserved for future support."),
+});
+
 const OPENWORK_EXTENSION_DISCOVERY_INSTRUCTION =
   "If the user asks for something you cannot do with obvious built-in tools, check OpenWork extensions before saying the capability is unavailable. Use openwork_extension_list_actions to inspect available extension actions, then call the matching action with openwork_extension_call.";
 
 const OPENWORK_UI_CONTROL_INSTRUCTION =
-  "You can control the OpenWork desktop UI. Use openwork_ui_list_actions to discover available actions (navigate settings, open panels, compose messages, manage sessions), then openwork_ui_execute_action to perform them. Common actions: settings.panel.open (with panel arg like 'ai', 'extensions', 'permissions'), composer.set_text, composer.send, session.create_task, help.capabilities.";
+  `IMPORTANT: You are running inside the OpenWork desktop app. When the user asks you to open settings, navigate the app, add providers, or control the OpenWork UI in any way, ALWAYS use the openwork_ui_* tools — NOT the browser_* tools. The browser tools are for external websites only. The openwork_ui_* tools control the app directly and are instant (one tool call).
+
+To open settings: openwork_ui_execute_action with actionId "settings.panel.open" and args {panel:"general"} (or "ai", "extensions", "permissions", "skills", "appearance", etc.)
+To add a provider: openwork_ui_execute_action with actionId "settings.provider.add" and optional args {providerId:"anthropic"}
+To see what the user sees: openwork_ui_snapshot
+To list all available actions: openwork_ui_list_actions
+To ask what OpenWork can do: openwork_ui_execute_action with actionId "help.capabilities"
+
+## Cross-session memory
+When the user asks what they said, what happened, or what was decided in another OpenWork chat/session, treat it as a session-history lookup through the OpenWork UI, not hidden model memory.
+Use openwork_ui_execute_action with actionId "session.list_sessions" to find matching sessions by title, workspace, topic, or session ID.
+If there is one clear match, use actionId "session.open" with args {sessionId:"..."}, then use actionId "session.read_transcript" with args {count:30} to read recent messages.
+Answer only from the returned transcript. If multiple sessions match, ask a short clarifying question. If the returned transcript is limited or missing the older context needed, say so instead of guessing.
+
+Do NOT use browser_navigate, browser_click, or browser_snapshot to interact with the OpenWork app itself. Those are for browsing external websites.
+
+## Built-in Browser (external websites)
+For web browsing tasks, ALWAYS start with openwork_browser_open_url. It creates/selects a built-in OpenWork browser tab and returns browser_url plus target_id. Use that exact browser_url and target_id for every later browser_snapshot, browser_click, browser_fill, browser_eval, and browser_screenshot call.
+Do not call browser_navigate without a target_id returned by openwork_browser_open_url. Do not use browser_* tools on the OpenWork app target (avoid targets with title "OpenWork" or URLs containing ":5173/#/").`;
 
 // ── UI control bridge discovery ──
 
@@ -232,6 +255,21 @@ export const OpenWorkExtensionsPreview = async () => ({
         const result = await uiBridgeRequest("/execute", {
           method: "POST",
           body: { actionId, args: args ?? {} },
+        });
+        return JSON.stringify(result, null, 2);
+      },
+    },
+    openwork_browser_open_url: {
+      description: "Open a URL in the OpenWork built-in browser and return the exact CDP browser_url and target_id to use for browser_* automation tools. Always use this before browser_snapshot/click/fill/eval for web browsing tasks.",
+      args: browserOpenUrlArgsSchema.shape,
+      async execute(rawArgs: unknown) {
+        const args = browserOpenUrlArgsSchema.parse(rawArgs);
+        const result = await uiBridgeRequest("/execute", {
+          method: "POST",
+          body: {
+            actionId: "browser.open_url",
+            args: { url: args.url, provider: args.provider ?? "builtin" },
+          },
         });
         return JSON.stringify(result, null, 2);
       },

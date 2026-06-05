@@ -5,7 +5,6 @@ RUN corepack enable
 WORKDIR /app
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml /app/
-COPY .npmrc /app/.npmrc
 COPY patches /app/patches
 COPY packages/types/package.json /app/packages/types/package.json
 COPY packages/ui/package.json /app/packages/ui/package.json
@@ -21,6 +20,8 @@ COPY ee/apps/den-web /app/ee/apps/den-web
 
 WORKDIR /app/ee/apps/den-web
 
-EXPOSE 3005
+RUN pnpm run build
 
-CMD ["sh", "-lc", "pnpm run build && pnpm run start"]
+EXPOSE 3000
+
+CMD ["pnpm", "run", "start"]

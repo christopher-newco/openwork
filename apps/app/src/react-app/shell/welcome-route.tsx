@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { useCallback, useEffect, useReducer } from "react";
+import { useCallback, useEffect, useReducer, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { t } from "../../i18n";
@@ -18,11 +18,16 @@ import { usePlatform } from "../kernel/platform";
 import { WelcomePage } from "../domains/onboarding/welcome-page";
 import { ProviderSelectionStep } from "../domains/onboarding/provider-selection-step";
 import { CreateWorkspaceModal } from "../domains/workspace/create-workspace-modal";
+import {
+  hideOpenWorkModelsPromo,
+  markOpenWorkModelsStartupPromoShown,
+} from "../domains/cloud/openwork-models-promo";
 import { resolveOpenworkConnection } from "./openwork-connection";
 import { buildOpenworkWorkspaceBaseUrl, createOpenworkServerClient } from "../../app/lib/openwork-server";
 import { buildDenAuthUrl, readDenSettings } from "../../app/lib/den";
 import { writeActiveWorkspaceId, writeLastSessionFor } from "./session-memory";
 import { workspaceSessionRoute } from "./workspace-routes";
+import { ensureDesktopLocalOpenworkConnection } from "./desktop-local-openwork";
 
 function folderNameFromPath(path: string) {
   const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "");
@@ -105,6 +110,7 @@ export function WelcomeRoute() {
   const local = useLocal();
   const platform = usePlatform();
   const [state, dispatch] = useReducer(welcomeReducer, initialWelcomeState);
+  const [manualFolder, setManualFolder] = useState("");
 
   // If user already completed onboarding, redirect away immediately.
   useEffect(() => {
@@ -160,6 +166,13 @@ export function WelcomeRoute() {
           await workspaceSetSelected(createdId).catch(() => undefined);
           await workspaceSetRuntimeActive(createdId).catch(() => undefined);
           writeActiveWorkspaceId(createdId);
+        }
+        if (targetWorkspace) {
+          await ensureDesktopLocalOpenworkConnection({
+            route: "session",
+            workspace: targetWorkspace,
+            allWorkspaces: list.workspaces,
+          }).catch(() => undefined);
         }
         if (targetWorkspaceId && serverBaseUrl && serverToken) {
           try {
@@ -264,10 +277,17 @@ export function WelcomeRoute() {
       dispatch({ type: "open" });
       return;
     }
-    const folder = await pickDirectory({ title: t("onboarding.authorize_folder") }) as string | null;
+    const picked = await pickDirectory({ title: t("onboarding.authorize_folder") });
+    const folder = typeof picked === "string" ? picked : null;
     if (!folder) return;
     await handleCreateWorkspace("starter", folder);
   }, [handleCreateWorkspace]);
+
+  const handleUseManualFolder = useCallback(async () => {
+    const folder = manualFolder.trim();
+    if (!folder) return;
+    await handleCreateWorkspace("starter", folder);
+  }, [handleCreateWorkspace, manualFolder]);
 
   return (
     <>
@@ -276,6 +296,10 @@ export function WelcomeRoute() {
         getStartedLabel={t("welcome.pick_folder")}
         busy={state.createBusy}
         error={state.createError}
+        manualFolder={manualFolder}
+        onManualFolderChange={setManualFolder}
+        onUseManualFolder={handleUseManualFolder}
+        showManualFolder={import.meta.env.DEV && isDesktopRuntime()}
       />
       <CreateWorkspaceModal
         open={state.modalOpen}
@@ -311,6 +335,8 @@ export function WelcomeRoute() {
             if (state.pendingSessionId) focusPromptSoon();
           }}
           onBringYourOwn={() => {
+            markOpenWorkModelsStartupPromoShown();
+            hideOpenWorkModelsPromo();
             const route = state.pendingWorkspaceId
               ? workspaceSessionRoute(state.pendingWorkspaceId, state.pendingSessionId)
               : "/session";

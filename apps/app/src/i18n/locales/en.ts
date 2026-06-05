@@ -1538,4 +1538,6 @@ export default {
   "session_management.new_group_prompt": "Name this group (e.g. Done, In progress):",
   "session_management.remove_group": "Remove group",
   "session_management.empty_group": "No sessions",
+  "session_management.ungrouped": "Ungrouped",
+  "session_management.archived_label": "Archived",
 } as const;
