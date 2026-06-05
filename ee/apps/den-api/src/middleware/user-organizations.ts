@@ -53,7 +53,13 @@ export const resolveUserOrganizationsMiddleware: MiddlewareHandler<{
   Variables: AuthContextVariables & Partial<UserOrganizationsContext>
 }> = async (c, next) => {
   const user = c.get("user")
+  console.log("[resolveUserOrganizationsMiddleware]", {
+    path: c.req.path,
+    hasUser: !!user,
+    userId: user?.id,
+  })
   if (!user?.id) {
+    console.error("[resolveUserOrganizationsMiddleware] No user found, returning 401")
     return c.json({ error: "unauthorized" }, 401) as never
   }
 
