@@ -200,13 +200,15 @@ async function getWorkerRuntimeAccess(workerId: WorkerId) {
     .orderBy(asc(WorkerTokenTable.created_at))
 
   const hostToken = tokenRows.find((entry) => entry.scope === "host")?.token ?? null
-  if (!instance?.url || !hostToken) {
+  const clientToken = tokenRows.find((entry) => entry.scope === "client")?.token ?? null
+  if (!instance?.url || !hostToken || !clientToken) {
     return null
   }
 
   return {
     instance,
     hostToken,
+    clientToken,
     candidates: getConnectUrlCandidates(workerId, instance.url),
   }
 }
@@ -235,13 +237,13 @@ export async function fetchWorkerRuntimeJson(input: {
   for (const candidate of access.candidates) {
     try {
       const url = `${normalizeUrl(candidate)}${input.path}`
-      console.log("[fetchWorkerRuntimeJson] Fetching", { url, hasHostToken: !!access.hostToken })
+      console.log("[fetchWorkerRuntimeJson] Fetching", { url, hasClientToken: !!access.clientToken })
       const response = await fetch(url, {
         method: input.method ?? "GET",
         headers: {
           Accept: "application/json",
           "Content-Type": "application/json",
-          Authorization: `Bearer ${access.hostToken}`,
+          Authorization: `Bearer ${access.clientToken}`,
         },
         body: input.body === undefined ? undefined : JSON.stringify(input.body),
       })
