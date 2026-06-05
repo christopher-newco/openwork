@@ -56,8 +56,13 @@ const BUILD_DEN_REQUIRE_SIGNIN =
   (typeof import.meta !== "undefined" && typeof import.meta.env?.VITE_DEN_REQUIRE_SIGNIN === "string"
     ? /^(1|true|yes|on)$/i.test(import.meta.env.VITE_DEN_REQUIRE_SIGNIN.trim())
     : false);
+const BUILD_PREDEFINED_WORKER_ID =
+  (typeof import.meta !== "undefined" && typeof import.meta.env?.VITE_PREDEFINED_WORKER_ID === "string"
+    ? import.meta.env.VITE_PREDEFINED_WORKER_ID.trim()
+    : "");
 
 export const DEFAULT_DEN_BASE_URL = BUILD_DEN_BASE_URL;
+export const PREDEFINED_WORKER_ID = BUILD_PREDEFINED_WORKER_ID;
 export const DEN_INFERENCE_PATH = "/dashboard/inference";
 
 export type DenSettings = {

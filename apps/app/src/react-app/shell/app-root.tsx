@@ -3,11 +3,12 @@
 import { useEffect, useSyncExternalStore, type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
-import { readDenBootstrapConfig, readDenSettings } from "../../app/lib/den";
+import { readDenBootstrapConfig, readDenSettings, PREDEFINED_WORKER_ID } from "../../app/lib/den";
 import { denSettingsChangedEvent, denSessionUpdatedEvent } from "../../app/lib/den-session-events";
 import { useDenAuth } from "../domains/cloud/den-auth-provider";
 import { ForcedSigninPage } from "../domains/cloud/forced-signin-page";
 import { OrgOnboardingPage } from "../domains/cloud/org-onboarding-page";
+import { PredefinedWorkerConnect } from "../domains/cloud/predefined-worker-connect";
 import { NewProvidersToast } from "./new-providers-toast";
 import { useDesktopFontZoomBehavior } from "./font-zoom";
 import { LoadingOverlay } from "./loading-overlay";
@@ -71,8 +72,12 @@ function DenSigninGate({ children }: DenSigninGateProps) {
       if (!denAuth.isSignedIn && !onSignin) {
         navigate("/signin", { replace: true });
       } else if (denAuth.isSignedIn && onSignin) {
-        // Signed in — route to onboarding so the user sees their org resources.
-        navigate("/onboarding", { replace: true });
+        // Signed in — route to predefined worker connect if configured, otherwise onboarding
+        if (PREDEFINED_WORKER_ID) {
+          navigate("/connect", { replace: true });
+        } else {
+          navigate("/onboarding", { replace: true });
+        }
       }
     } else if (onSignin) {
       navigate("/session", { replace: true });
@@ -90,8 +95,7 @@ function DenSigninGate({ children }: DenSigninGateProps) {
     requireSignin,
   ]);
 
-  // After a fresh sign-in, navigate to the onboarding page so the
-  // user sees what their org provides.
+  // After a fresh sign-in, navigate to the connect or onboarding page.
   // Poll for activeOrgId (set asynchronously by refreshOrgs) rather
   // than using a fixed delay — handles both fast and slow org lookups.
   useEffect(() => {
@@ -102,7 +106,8 @@ function DenSigninGate({ children }: DenSigninGateProps) {
         attempts++;
         const settings = readDenSettings();
         if (settings.authToken?.trim() && settings.activeOrgId?.trim()) {
-          navigate("/onboarding", { replace: true });
+          // Navigate to connect page if predefined worker is configured
+          navigate(PREDEFINED_WORKER_ID ? "/connect" : "/onboarding", { replace: true });
         } else if (attempts < 10) {
           // Org not selected yet — retry (max ~5 seconds)
           setTimeout(check, 500);
@@ -139,6 +144,14 @@ export function AppRoot() {
                 element={
                   <DevProfiler id="SigninRoute">
                     <ForcedSigninPage developerMode={false} />
+                  </DevProfiler>
+                }
+              />
+              <Route
+                path="/connect"
+                element={
+                  <DevProfiler id="PredefinedWorkerConnect">
+                    <PredefinedWorkerConnect />
                   </DevProfiler>
                 }
               />
