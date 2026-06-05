@@ -20,4 +20,4 @@ RUN pnpm --filter @openwork/app build:web
 
 EXPOSE 5173
 
-CMD ["pnpm", "--filter", "@openwork/app", "preview"]
+CMD ["pnpm", "--filter", "@openwork/app", "preview", "--host", "0.0.0.0", "--port", "5173"]
