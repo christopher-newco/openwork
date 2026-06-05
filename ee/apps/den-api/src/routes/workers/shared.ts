@@ -234,7 +234,9 @@ export async function fetchWorkerRuntimeJson(input: {
 
   for (const candidate of access.candidates) {
     try {
-      const response = await fetch(`${normalizeUrl(candidate)}${input.path}`, {
+      const url = `${normalizeUrl(candidate)}${input.path}`
+      console.log("[fetchWorkerRuntimeJson] Fetching", { url, hasHostToken: !!access.hostToken })
+      const response = await fetch(url, {
         method: input.method ?? "GET",
         headers: {
           Accept: "application/json",
@@ -246,6 +248,7 @@ export async function fetchWorkerRuntimeJson(input: {
 
       const text = await response.text()
       lastStatus = response.status
+      console.log("[fetchWorkerRuntimeJson] Response", { status: lastStatus, text: text.substring(0, 200) })
       try {
         lastPayload = text ? JSON.parse(text) : null
       } catch {
