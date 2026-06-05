@@ -24,17 +24,18 @@ This guide explains how to deploy OpenWork Den (den-api + den-web) on Railway wi
 
 ## Step 2: Add Database Services
 
-### Option A: PostgreSQL (Recommended)
-
-1. Click "New" → "Database" → "Add PostgreSQL"
-2. Railway will automatically create `DATABASE_URL` environment variable
-3. Note: The codebase auto-detects PostgreSQL from the URL
-
-### Option B: MySQL
+### Option A: MySQL (Recommended - Native Support)
 
 1. Click "New" → "Database" → "Add MySQL"
 2. Railway will automatically create `DATABASE_URL` environment variable
-3. Note: The codebase auto-detects MySQL from the URL
+3. **Note**: OpenWork was designed for MySQL - all existing migrations are in MySQL format
+
+### Option B: PostgreSQL (Alternative - Requires Fresh Start)
+
+1. Click "New" → "Database" → "Add PostgreSQL"
+2. Railway will automatically create `DATABASE_URL` environment variable
+3. **Note**: PostgreSQL support was added recently. You'll need to push schema directly rather than using migrations
+4. **Warning**: Existing MySQL migrations won't work with PostgreSQL
 
 ### Add Redis
 
@@ -233,22 +234,30 @@ curl https://den-api-production.up.railway.app/health
 
 OpenWork Den supports three database modes:
 
-1. **PostgreSQL** (Recommended for Railway)
-   - Auto-detected from `DATABASE_URL=postgresql://...`
-   - Uses native Postgres driver
-   - Best for production deployments
-
-2. **MySQL**
+1. **MySQL** ⭐ (Recommended - Native)
    - Auto-detected from `DATABASE_URL=mysql://...`
    - Uses mysql2 driver
-   - Good for traditional setups
+   - **All existing migrations are MySQL-formatted**
+   - Best for production deployments on Railway
 
-3. **PlanetScale**
+2. **PlanetScale** (Serverless MySQL)
    - Used when `DATABASE_HOST`, `DATABASE_USERNAME`, `DATABASE_PASSWORD` are set
    - Uses PlanetScale serverless driver
    - Good for serverless deployments
+   - Compatible with MySQL migrations
+
+3. **PostgreSQL** (Alternative)
+   - Auto-detected from `DATABASE_URL=postgresql://...`
+   - Uses native Postgres driver
+   - **Requires schema push instead of migrations** (no migration files available)
+   - Good if you prefer PostgreSQL ecosystem
 
 The database type is auto-detected from the `DATABASE_URL` format.
+
+### Migration vs Schema Push
+
+- **MySQL/PlanetScale**: Use `pnpm run db:migrate` (recommended - migration history tracked)
+- **PostgreSQL**: Use `pnpm run db:push` (pushes schema directly - no migration history)
 
 ## Environment Variables Reference
 
