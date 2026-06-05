@@ -85,7 +85,7 @@ export function ConnectScreen() {
         const connectUrl = buildOpenworkAppConnectUrl(
           OPENWORK_APP_CONNECT_BASE_URL,
           activeWorker?.openworkUrl || worker.instanceUrl,
-          activeWorker?.clientToken || activeWorker?.ownerToken,
+          activeWorker?.clientToken || activeWorker?.ownerToken || null,
           worker.workerId,
           worker.workerName,
           { autoConnect: true }
