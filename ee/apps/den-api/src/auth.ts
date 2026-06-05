@@ -132,14 +132,24 @@ export const auth = betterAuth({
     session: {
       create: {
         before: async (session) => {
-          const activeOrganizationId = await getInitialActiveOrganizationIdForUser(session.userId);
+          try {
+            console.log(`[databaseHooks.session.create.before] Session creation for userId: ${session.userId}`)
+            const activeOrganizationId = await getInitialActiveOrganizationIdForUser(session.userId);
+            console.log(`[databaseHooks.session.create.before] activeOrganizationId: ${activeOrganizationId}`)
 
-          return {
-            data: {
-              ...session,
-              activeOrganizationId,
-            },
-          };
+            return {
+              data: {
+                ...session,
+                activeOrganizationId,
+              },
+            };
+          } catch (error) {
+            console.error("[databaseHooks.session.create.before] Error in session hook:", error)
+            // Return session without activeOrganizationId if there's an error
+            return {
+              data: session,
+            };
+          }
         },
       },
     },
