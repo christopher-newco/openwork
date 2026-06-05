@@ -20,6 +20,8 @@ COPY ee/apps/den-web /app/ee/apps/den-web
 
 WORKDIR /app/ee/apps/den-web
 
+RUN pnpm run build
+
 EXPOSE 3005
 
-CMD ["sh", "-lc", "pnpm run build && pnpm run start"]
+CMD ["pnpm", "run", "start"]
