@@ -7,7 +7,7 @@ const EnvSchema = z.object({
   DATABASE_USERNAME: z.string().min(1).optional(),
   DATABASE_PASSWORD: z.string().optional(),
   DEN_DB_ENCRYPTION_KEY: z.string().trim().min(32),
-  DB_MODE: z.enum(["mysql", "planetscale"]).optional(),
+  DB_MODE: z.enum(["mysql", "postgres", "planetscale"]).optional(),
   BETTER_AUTH_SECRET: z.string().min(32),
   BETTER_AUTH_URL: z.string().min(1),
   DEN_MCP_RESOURCE_URL: z.string().optional(),
@@ -102,12 +102,23 @@ const EnvSchema = z.object({
   STRIPE_BILLING_SUCCESS_URL: z.string().optional(),
   STRIPE_BILLING_CANCEL_URL: z.string().optional(),
 }).superRefine((value, ctx) => {
-  const inferredMode = value.DB_MODE ?? (value.DATABASE_URL ? "mysql" : "planetscale")
+  // Auto-detect database mode from URL if not explicitly set
+  let inferredMode = value.DB_MODE
+  if (!inferredMode && value.DATABASE_URL) {
+    if (value.DATABASE_URL.startsWith("postgres://") || value.DATABASE_URL.startsWith("postgresql://")) {
+      inferredMode = "postgres"
+    } else {
+      inferredMode = "mysql"
+    }
+  }
+  if (!inferredMode) {
+    inferredMode = "planetscale"
+  }
 
-  if (inferredMode === "mysql" && !value.DATABASE_URL) {
+  if ((inferredMode === "mysql" || inferredMode === "postgres") && !value.DATABASE_URL) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: "DATABASE_URL is required when using mysql mode",
+      message: `DATABASE_URL is required when using ${inferredMode} mode`,
       path: ["DATABASE_URL"],
     })
   }
@@ -175,7 +186,16 @@ const planetscaleCredentials =
 export const env = {
   databaseUrl: parsed.DATABASE_URL,
   dbEncryptionKey: optionalString(parsed.DEN_DB_ENCRYPTION_KEY),
-  dbMode: parsed.DB_MODE ?? (parsed.DATABASE_URL ? "mysql" : "planetscale"),
+  dbMode: (() => {
+    if (parsed.DB_MODE) return parsed.DB_MODE
+    if (parsed.DATABASE_URL) {
+      if (parsed.DATABASE_URL.startsWith("postgres://") || parsed.DATABASE_URL.startsWith("postgresql://")) {
+        return "postgres"
+      }
+      return "mysql"
+    }
+    return "planetscale"
+  })() as "mysql" | "postgres" | "planetscale",
   planetscale: planetscaleCredentials,
   betterAuthSecret: parsed.BETTER_AUTH_SECRET,
   betterAuthUrl: normalizeOrigin(parsed.BETTER_AUTH_URL),
