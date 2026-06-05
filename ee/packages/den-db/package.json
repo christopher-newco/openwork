@@ -80,14 +80,16 @@
     "db:push": "pnpm run build && node --import tsx ./node_modules/drizzle-kit/bin.cjs push --config drizzle.config.ts"
   },
   "dependencies": {
-    "@openwork/types": "workspace:*",
     "@openwork-ee/utils": "workspace:*",
+    "@openwork/types": "workspace:*",
     "@planetscale/database": "^1.19.0",
     "drizzle-orm": "^0.45.1",
-    "mysql2": "^3.11.3"
+    "mysql2": "^3.11.3",
+    "pg": "^8.21.0"
   },
   "devDependencies": {
     "@types/node": "^20.11.30",
+    "@types/pg": "^8.20.0",
     "drizzle-kit": "^0.31.9",
     "tsup": "^8.5.0",
     "tsx": "^4.21.0",

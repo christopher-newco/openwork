@@ -8,7 +8,29 @@ function isGenerateCommand() {
   return process.argv.some((arg) => arg === "generate")
 }
 
+function resolveDialect(): "mysql" | "postgresql" {
+  if (databaseUrl && (databaseUrl.startsWith("postgres://") || databaseUrl.startsWith("postgresql://"))) {
+    return "postgresql"
+  }
+  return "mysql"
+}
+
 function resolveDrizzleDbCredentials() {
+  const dialect = resolveDialect()
+
+  if (dialect === "postgresql") {
+    if (databaseUrl) {
+      return { url: databaseUrl }
+    }
+
+    if (isGenerateCommand()) {
+      return { url: "postgresql://postgres:password@127.0.0.1:5432/openwork_den" }
+    }
+
+    throw new Error("Provide DATABASE_URL for postgres")
+  }
+
+  // MySQL/PlanetScale mode
   if (databaseUrl) {
     return parseMySqlConnectionConfig(databaseUrl)
   }
@@ -37,7 +59,7 @@ function resolveDrizzleDbCredentials() {
 }
 
 export default defineConfig({
-  dialect: "mysql",
+  dialect: resolveDialect(),
   schema: "./src/schema.ts",
   out: "./drizzle",
   dbCredentials: resolveDrizzleDbCredentials(),

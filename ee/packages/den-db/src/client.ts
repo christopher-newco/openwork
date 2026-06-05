@@ -1,12 +1,14 @@
 import { Client } from "@planetscale/database"
 import { drizzle } from "drizzle-orm/mysql2"
 import { drizzle as drizzlePlanetScale } from "drizzle-orm/planetscale-serverless"
+import { drizzle as drizzlePostgres } from "drizzle-orm/node-postgres"
 import type { FieldPacket, QueryOptions, QueryResult } from "mysql2"
 import mysql from "mysql2/promise"
+import pg from "pg"
 import { parseMySqlConnectionConfig } from "./mysql-config"
 import * as schema from "./schema"
 
-export type DenDbMode = "mysql" | "planetscale"
+export type DenDbMode = "mysql" | "planetscale" | "postgres"
 type DenDb = ReturnType<typeof drizzlePlanetScale>
 export type PlanetScaleCredentials = {
   host: string
@@ -105,7 +107,15 @@ function resolveDbMode(input: { mode?: DenDbMode; databaseUrl?: string | null })
     return input.mode
   }
 
-  return input.databaseUrl ? "mysql" : "planetscale"
+  // Auto-detect database type from URL
+  if (input.databaseUrl) {
+    if (input.databaseUrl.startsWith("postgres://") || input.databaseUrl.startsWith("postgresql://")) {
+      return "postgres"
+    }
+    return "mysql"
+  }
+
+  return "planetscale"
 }
 
 export function createDenDb(input: {
@@ -114,6 +124,24 @@ export function createDenDb(input: {
   planetscale?: PlanetScaleCredentials | null
 }) {
   const mode = resolveDbMode(input)
+
+  if (mode === "postgres") {
+    if (!input.databaseUrl) {
+      throw new Error("Postgres mode requires DATABASE_URL")
+    }
+
+    const client = new pg.Pool({
+      connectionString: input.databaseUrl,
+      max: 10,
+      idleTimeoutMillis: 60_000,
+      connectionTimeoutMillis: 10_000,
+    })
+
+    return {
+      client,
+      db: drizzlePostgres(client, { schema }) as unknown as DenDb,
+    }
+  }
 
   if (mode === "planetscale") {
     const credentials = input.planetscale ?? (input.databaseUrl ? parsePlanetScaleConfigFromDatabaseUrl(input.databaseUrl) : null)
