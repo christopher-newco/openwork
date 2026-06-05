@@ -103,6 +103,11 @@ export default defineConfig({
     strictPort: true,
     ...(allowedHosts.size > 0 ? { allowedHosts: Array.from(allowedHosts) } : {}),
   },
+  preview: {
+    port: devPort,
+    strictPort: true,
+    ...(allowedHosts.size > 0 ? { allowedHosts: Array.from(allowedHosts) } : {}),
+  },
   build: {
     target: "esnext",
     rollupOptions: {
