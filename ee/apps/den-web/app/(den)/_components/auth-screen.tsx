@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { isSamePathname } from "../_lib/client-route";
 import { getMcpOAuthSelectOrganizationRoute } from "../_lib/mcp-oauth-route";
+import { PREDEFINED_WORKER_ID } from "../_lib/den-flow";
 import { useDenFlow } from "../_providers/den-flow-provider";
 import { AuthPanel } from "./auth-panel";
 
@@ -68,6 +69,16 @@ export function AuthScreen() {
     const oauthRoute = typeof window === "undefined" ? null : getMcpOAuthSelectOrganizationRoute(window.location.search);
     if (oauthRoute && !isSamePathname(pathname, oauthRoute)) {
       router.replace(oauthRoute);
+      return;
+    }
+
+    // If predefined worker is configured, redirect to connect page
+    if (PREDEFINED_WORKER_ID && !isSamePathname(pathname, "/connect")) {
+      routingRef.current = true;
+      router.replace("/connect");
+      setTimeout(() => {
+        routingRef.current = false;
+      }, 1000);
       return;
     }
 

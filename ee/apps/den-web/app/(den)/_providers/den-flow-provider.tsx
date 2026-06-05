@@ -9,6 +9,7 @@ import {
   ONBOARDING_INTENT_STORAGE_KEY,
   OPENWORK_APP_CONNECT_BASE_URL,
   PENDING_SOCIAL_SIGNUP_STORAGE_KEY,
+  PREDEFINED_WORKER_ID,
   WORKER_STATUS_POLL_MS,
   type AuthMethod,
   type AuthMode,
@@ -220,6 +221,7 @@ export function DenFlowProvider({ children }: { children: ReactNode }) {
   const onboardingAutoLaunchKeyRef = useRef<string | null>(null);
   const socialSignupHandledRef = useRef<string | null>(null);
   const pendingWorkersRequestRef = useRef<Promise<{ response: Response; payload: unknown }> | null>(null);
+  const predefinedWorkerConnectedRef = useRef<boolean>(false);
 
   const selectedWorker = workers.find((item) => item.workerId === workerLookupId) ?? null;
   const activeWorker =
@@ -1957,6 +1959,40 @@ export function DenFlowProvider({ children }: { children: ReactNode }) {
       setWorkerName(deriveOnboardingWorkerName(user));
     }
   }, [onboardingPending, user?.id, workerName]);
+
+  // Auto-connect to predefined worker if configured
+  useEffect(() => {
+    if (!user || !PREDEFINED_WORKER_ID || !workersLoadedOnce || predefinedWorkerConnectedRef.current) {
+      return;
+    }
+
+    const predefinedWorker = workers.find((w) => w.workerId === PREDEFINED_WORKER_ID);
+    if (!predefinedWorker) {
+      console.warn(`Predefined worker ${PREDEFINED_WORKER_ID} not found in worker list`);
+      return;
+    }
+
+    predefinedWorkerConnectedRef.current = true;
+    setWorkerLookupId(PREDEFINED_WORKER_ID);
+    setWorker((current) => listItemToWorker(predefinedWorker, current));
+
+    // Auto-connect to the worker
+    const connectUrl = buildOpenworkAppConnectUrl(
+      OPENWORK_APP_CONNECT_BASE_URL,
+      predefinedWorker.instanceUrl,
+      null, // Token will be fetched automatically
+      PREDEFINED_WORKER_ID,
+      predefinedWorker.workerName,
+      { autoConnect: true }
+    );
+
+    if (connectUrl && typeof window !== "undefined") {
+      // Store the intent to auto-connect
+      window.sessionStorage.setItem("autoConnectUrl", connectUrl);
+    }
+
+    appendEvent("info", "Auto-selected worker", predefinedWorker.workerName);
+  }, [user?.id, workers, workersLoadedOnce]);
 
   const showAuthFeedback = authInfo !== getAuthInfoForMode(authMode) || authError !== null;
 
