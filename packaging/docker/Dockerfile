@@ -1,6 +1,6 @@
 FROM node:22-bookworm-slim
 
-ARG OPENWORK_ORCHESTRATOR_VERSION=0.11.22
+ARG OPENWORK_ORCHESTRATOR_VERSION=0.15.1
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
