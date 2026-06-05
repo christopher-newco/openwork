@@ -31,5 +31,5 @@ COPY --from=builder /app/apps/app/dist /app/dist
 
 EXPOSE 5173
 
-# Serve the built files
-CMD ["serve", "-s", "dist", "-l", "5173"]
+# Serve the built files - Railway provides PORT env var
+CMD sh -c "serve -s dist -l ${PORT:-5173}"
