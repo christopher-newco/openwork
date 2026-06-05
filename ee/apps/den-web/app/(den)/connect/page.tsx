@@ -3,7 +3,6 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
-  PREDEFINED_WORKER_ID,
   OPENWORK_APP_CONNECT_BASE_URL,
   buildOpenworkAppConnectUrl,
   getWorkerStatusMeta,
@@ -12,9 +11,10 @@ import { useDenFlow } from "../_providers/den-flow-provider";
 
 export default function ConnectPage() {
   const router = useRouter();
-  const { user, workers, workersLoadedOnce, checkWorkerStatus, generateWorkerToken, activeWorker } = useDenFlow();
+  const { user, workers, workersLoadedOnce, checkWorkerStatus, generateWorkerToken, activeWorker, launchWorker, ownedWorkerCount } = useDenFlow();
   const [status, setStatus] = useState<string>("Loading...");
   const [error, setError] = useState<string | null>(null);
+  const [isProvisioning, setIsProvisioning] = useState(false);
 
   useEffect(() => {
     if (!user) {
@@ -25,21 +25,36 @@ export default function ConnectPage() {
       return;
     }
 
-    if (!PREDEFINED_WORKER_ID) {
-      setError("No predefined worker configured");
-      setStatus("Configuration error");
-      return;
-    }
-
     if (!workersLoadedOnce) {
       setStatus("Loading workers...");
       return;
     }
 
-    const worker = workers.find((w) => w.workerId === PREDEFINED_WORKER_ID);
+    // Auto-provision worker if user doesn't have one
+    if (ownedWorkerCount === 0 && !isProvisioning) {
+      setIsProvisioning(true);
+      setStatus("Creating your workspace...");
+
+      const provisionWorker = async () => {
+        const result = await launchWorker({ source: "signup_auto" });
+        if (result === "error" || result === "limit") {
+          setError("Failed to create workspace. Please contact support.");
+          setStatus("Provisioning failed");
+        }
+        // Worker will appear in workers list and effect will re-run
+      };
+
+      void provisionWorker();
+      return;
+    }
+
+    // Get the user's worker (first owned worker)
+    const worker = workers.find((w) => w.isMine);
     if (!worker) {
-      setError(`Worker ${PREDEFINED_WORKER_ID} not found`);
-      setStatus("Worker not found");
+      if (!isProvisioning) {
+        setError("No workspace found");
+        setStatus("Worker not found");
+      }
       return;
     }
 
@@ -49,7 +64,7 @@ export default function ConnectPage() {
       setStatus(`Worker is ${statusMeta.label.toLowerCase()}. Waiting for worker to be ready...`);
       // Poll for status
       const interval = setInterval(() => {
-        void checkWorkerStatus({ workerId: PREDEFINED_WORKER_ID, quiet: true });
+        void checkWorkerStatus({ workerId: worker.workerId, quiet: true });
       }, 3000);
       return () => clearInterval(interval);
     }
@@ -76,7 +91,7 @@ export default function ConnectPage() {
         );
 
         if (connectUrl) {
-          setStatus("Connecting to worker...");
+          setStatus("Connecting to workspace...");
           // Redirect to the worker
           window.location.href = connectUrl;
         } else {
@@ -90,7 +105,7 @@ export default function ConnectPage() {
     };
 
     void connect();
-  }, [user, workers, workersLoadedOnce, activeWorker, checkWorkerStatus, generateWorkerToken, router]);
+  }, [user, workers, workersLoadedOnce, activeWorker, checkWorkerStatus, generateWorkerToken, launchWorker, ownedWorkerCount, isProvisioning, router]);
 
   return (
     <section className="den-page flex w-full items-center justify-center py-8">

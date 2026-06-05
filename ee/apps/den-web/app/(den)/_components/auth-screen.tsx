@@ -6,7 +6,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { isSamePathname } from "../_lib/client-route";
 import { getMcpOAuthSelectOrganizationRoute } from "../_lib/mcp-oauth-route";
-import { PREDEFINED_WORKER_ID } from "../_lib/den-flow";
 import { useDenFlow } from "../_providers/den-flow-provider";
 import { AuthPanel } from "./auth-panel";
 
@@ -72,8 +71,8 @@ export function AuthScreen() {
       return;
     }
 
-    // If predefined worker is configured, redirect to connect page
-    if (PREDEFINED_WORKER_ID && !isSamePathname(pathname, "/connect")) {
+    // Always redirect to /connect for auto-provisioning and connection
+    if (!isSamePathname(pathname, "/connect")) {
       routingRef.current = true;
       router.replace("/connect");
       setTimeout(() => {
