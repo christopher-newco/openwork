@@ -33,16 +33,4 @@ EXPOSE 3005
 # - OpenCode stays internal (127.0.0.1:4096)
 # - OpenWork server proxies OpenCode via localhost
 # - OpenCode Router disabled by default
-CMD [
-  "openwork",
-  "serve",
-  "--workspace", "/workspace",
-  "--remote-access",
-  "--openwork-port", "8787",
-  "--opencode-host", "127.0.0.1",
-  "--opencode-port", "4096",
-  "--connect-host", "127.0.0.1",
-  "--cors", "*",
-  "--approval", "manual",
-  "--no-opencode-router"
-]
+CMD ["openwork", "serve", "--workspace", "/workspace", "--remote-access", "--openwork-port", "8787", "--opencode-host", "127.0.0.1", "--opencode-port", "4096", "--connect-host", "127.0.0.1", "--cors", "*", "--approval", "manual", "--no-opencode-router"]
