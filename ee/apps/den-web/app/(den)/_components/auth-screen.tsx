@@ -71,10 +71,10 @@ export function AuthScreen() {
       return;
     }
 
-    // Always redirect to /connect for auto-provisioning and connection
-    if (!isSamePathname(pathname, "/connect")) {
+    // Always redirect to /workspace for auto-provisioning and connection
+    if (!isSamePathname(pathname, "/workspace")) {
       routingRef.current = true;
-      router.replace("/connect");
+      router.replace("/workspace");
       setTimeout(() => {
         routingRef.current = false;
       }, 1000);
