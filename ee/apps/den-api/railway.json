@@ -6,7 +6,6 @@
     "watchPatterns": ["ee/apps/den-api/**", "ee/packages/**", "packages/**"]
   },
   "deploy": {
-    "rootDirectory": "/",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   }
