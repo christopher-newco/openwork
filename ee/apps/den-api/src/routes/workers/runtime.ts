@@ -26,10 +26,19 @@ export function registerWorkerRuntimeRoutes<T extends { Variables: WorkerRouteVa
     resolveUserOrganizationsMiddleware,
     paramValidator(workerIdParamSchema),
     async (c) => {
+    console.log("[runtime handler] Starting", {
+      path: c.req.path,
+      method: c.req.method,
+    })
     const orgId = c.get("activeOrganizationId")
     const params = c.req.valid("param")
+    console.log("[runtime handler] Got context", {
+      orgId,
+      workerId: params.id,
+    })
 
     if (!orgId) {
+      console.error("[runtime handler] No orgId, returning 404")
       return c.json({ error: "worker_not_found" }, 404)
     }
 
