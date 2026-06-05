@@ -19,10 +19,11 @@ COPY ee/packages/utils /app/ee/packages/utils
 COPY ee/packages/den-db /app/ee/packages/den-db
 COPY ee/apps/inference /app/ee/apps/inference
 
-WORKDIR /app/ee/apps/inference
+# Build from root to preserve monorepo structure
+RUN pnpm --filter @openwork-ee/inference run build
 
-RUN pnpm run build
+WORKDIR /app/ee/apps/inference
 
 EXPOSE 8791
 
-CMD ["pnpm", "run", "start"]
+CMD ["node", "dist/server.js"]
