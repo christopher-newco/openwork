@@ -146,8 +146,12 @@ export const auth = betterAuth({
   },
   account: {
     // Skip state cookie check for cross-domain OAuth (admin.soapbox.build -> den-api-production-89bf.up.railway.app)
-    // The verification record in database still validates the state parameter
     skipStateCookieCheck: true,
+  },
+  verification: {
+    // Use cookie strategy instead of database to avoid cross-domain state issues
+    // State is encrypted into a cookie and validated on callback
+    storeStateStrategy: "cookie",
   },
   advanced: {
     ipAddress: {
