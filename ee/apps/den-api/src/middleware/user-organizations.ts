@@ -96,5 +96,10 @@ export const resolveUserOrganizationsMiddleware: MiddlewareHandler<{
   c.set("userOrganizations", scopedOrgs)
   c.set("activeOrganizationId", activeOrganizationId)
   c.set("activeOrganizationSlug", activeOrganizationSlug)
+  console.log("[resolveUserOrganizationsMiddleware] Set context:", {
+    path: c.req.path,
+    activeOrganizationId,
+    orgsCount: scopedOrgs.length,
+  })
   await next()
 }
