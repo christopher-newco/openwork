@@ -1,5 +1,6 @@
 "use client";
 
+// Auto-provision and connect workers for new users
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
