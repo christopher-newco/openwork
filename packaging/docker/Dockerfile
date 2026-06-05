@@ -26,7 +26,7 @@ EXPOSE 8787
 # Optional: opencode-router health (only relevant if you enable the router).
 EXPOSE 3005
 
-VOLUME ["/workspace", "/data"]
+# VOLUME ["/workspace", "/data"]  # Disabled for Railway - use Railway Volumes instead
 
 # Defaults:
 # - OpenWork server is published intentionally via --remote-access
