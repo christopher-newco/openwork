@@ -989,7 +989,38 @@ export function SessionRoute() {
         token: resolvedToken,
         hostToken: resolvedHostToken || undefined,
       });
-      const list = await openworkClient.listWorkspaces();
+      let list = await openworkClient.listWorkspaces();
+
+      // Auto-provision workspace for predefined worker (web deployment)
+      if (!isDesktopRuntime() && list.items.length === 0) {
+        try {
+          const predefinedWorkerJson = localStorage.getItem("openwork.predefinedWorker");
+          if (predefinedWorkerJson) {
+            const predefinedWorker = JSON.parse(predefinedWorkerJson);
+            if (predefinedWorker.openworkUrl && predefinedWorker.accessToken) {
+              // Create remote workspace for the predefined worker
+              const provisionedList = await openworkClient.createRemoteWorkspace({
+                baseUrl: predefinedWorker.openworkUrl,
+                openworkHostUrl: predefinedWorker.openworkUrl,
+                openworkToken: predefinedWorker.accessToken,
+                displayName: predefinedWorker.workerName || "Workspace",
+                directory: null,
+                remoteType: "openwork",
+              });
+              // Clear the predefined worker from localStorage (one-time provision)
+              localStorage.removeItem("openwork.predefinedWorker");
+              // Update list with the newly created workspace
+              if (provisionedList?.workspaces) {
+                list = await openworkClient.listWorkspaces();
+              }
+            }
+          }
+        } catch (error) {
+          console.error("[session-route] Failed to auto-provision predefined worker", error);
+          // Continue without auto-provisioning if it fails
+        }
+      }
+
       const nextWorkspaces = orderRouteWorkspaces(
         mergeRouteWorkspaces(list.items, desktopWorkspaces),
         workspaceOrderIdsRef.current,

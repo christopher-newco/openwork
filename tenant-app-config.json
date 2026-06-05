@@ -1,0 +1,23 @@
+{
+  "tenant": "app",
+  "workerId": "wrk_01ktc2s5fmfer9zy3h2pr1nq6h",
+  "workerName": "app Worker",
+  "createdAt": "2026-06-05T14:25:19.355Z",
+  "tokens": {
+    "host": "71b5921ddbb36897cab0bb4ec6c57d086477a4c1f297a91fc37427003a391958",
+    "client": "a1d0d323e36752f36dc61227cb4691890cc7d52acd10c41aa1aae7945ab0af68",
+    "owner": "71b5921ddbb36897cab0bb4ec6c57d086477a4c1f297a91fc37427003a391958"
+  },
+  "workerEnv": {
+    "OPENWORK_TOKEN": "a1d0d323e36752f36dc61227cb4691890cc7d52acd10c41aa1aae7945ab0af68",
+    "OPENWORK_HOST_TOKEN": "71b5921ddbb36897cab0bb4ec6c57d086477a4c1f297a91fc37427003a391958",
+    "DEN_WORKER_ID": "wrk_01ktc2s5fmfer9zy3h2pr1nq6h",
+    "DEN_API_URL": "https://den-api-production-89bf.up.railway.app"
+  },
+  "appEnv": {
+    "VITE_DEN_BASE_URL": "https://admin.soapbox.build",
+    "VITE_DEN_API_BASE_URL": "https://den-api-production-89bf.up.railway.app",
+    "VITE_DEN_REQUIRE_SIGNIN": "true",
+    "VITE_PREDEFINED_WORKER_ID": "wrk_01ktc2s5fmfer9zy3h2pr1nq6h"
+  }
+}
