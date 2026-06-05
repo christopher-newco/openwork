@@ -24,6 +24,6 @@ WORKDIR /app/ee/apps/den-api
 
 RUN pnpm run build
 
-EXPOSE 8790
+EXPOSE 3000
 
 CMD ["pnpm", "run", "start"]
