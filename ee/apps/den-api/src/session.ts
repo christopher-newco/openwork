@@ -195,7 +195,8 @@ export async function getRequestSession(headers: Headers): Promise<AuthSessionLi
   let cookieSession: AuthSessionLike
   try {
     cookieSession = await auth.api.getSession({ headers })
-  } catch {
+  } catch (error) {
+    console.error("[getRequestSession] Better Auth session validation failed:", error)
     return null
   }
 
