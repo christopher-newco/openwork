@@ -194,10 +194,24 @@ function sharedVolumeMounts(workerId: WorkerId, volumeId: string) {
 }
 
 function buildOpenWorkStartCommand(input: ProvisionInput) {
-  const verifyRuntimeStep = [
-    "if ! command -v openwork >/dev/null 2>&1; then echo 'openwork binary missing from Daytona runtime image; rebuild and republish the Daytona snapshot' >&2; exit 1; fi",
-    "if ! command -v opencode >/dev/null 2>&1; then echo 'opencode binary missing from Daytona runtime image; rebuild and republish the Daytona snapshot' >&2; exit 1; fi",
-  ].join("; ")
+  const installOpenworkStep = [
+    "if ! command -v openwork >/dev/null 2>&1; then",
+    "  echo 'Installing openwork-orchestrator...' >&2",
+    "  npm install -g openwork-orchestrator",
+    "fi",
+    "if ! command -v openwork >/dev/null 2>&1; then",
+    "  echo 'openwork installation failed' >&2",
+    "  exit 1",
+    "fi",
+    "if ! command -v opencode >/dev/null 2>&1; then",
+    "  echo 'Installing opencode...' >&2",
+    "  curl -fsSL https://raw.githubusercontent.com/openworklabs/openwork-orchestrator/main/scripts/install-opencode.mjs | node",
+    "fi",
+    "if ! command -v opencode >/dev/null 2>&1; then",
+    "  echo 'opencode installation failed' >&2",
+    "  exit 1",
+    "fi",
+  ].join("\n")
   const openworkServe = [
     "OPENWORK_DATA_DIR=",
     shellQuote(env.daytona.runtimeDataPath),
@@ -238,7 +252,7 @@ set -u
 mkdir -p ${shellQuote(env.daytona.workspaceMountPath)} ${shellQuote(env.daytona.dataMountPath)} ${shellQuote(env.daytona.runtimeWorkspacePath)} ${shellQuote(env.daytona.runtimeDataPath)} ${shellQuote(env.daytona.sidecarDir)} ${shellQuote(`${env.daytona.runtimeWorkspacePath}/volumes`)}
 ln -sfn ${shellQuote(env.daytona.workspaceMountPath)} ${shellQuote(`${env.daytona.runtimeWorkspacePath}/volumes/workspace`) }
 ln -sfn ${shellQuote(env.daytona.dataMountPath)} ${shellQuote(`${env.daytona.runtimeWorkspacePath}/volumes/data`) }
-${verifyRuntimeStep}
+${installOpenworkStep}
 attempt=0
 while [ "$attempt" -lt 3 ]; do
   attempt=$((attempt + 1))
