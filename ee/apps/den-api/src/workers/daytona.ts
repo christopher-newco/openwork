@@ -207,8 +207,17 @@ function buildOpenWorkStartCommand(input: ProvisionInput) {
     "  echo 'Installing opencode stub...' >&2",
     "  cat > /usr/local/bin/opencode << 'OPENCODE_STUB_EOF'",
     "#!/usr/bin/env node",
+    "const args = process.argv.slice(2);",
+    "if (args.includes('--version') || args.includes('-v')) {",
+    "  console.log('1.15.12');",
+    "  process.exit(0);",
+    "}",
     "const http = require('http');",
-    "const port = process.env.PORT || 4096;",
+    "let port = 4096;",
+    "const portIndex = args.indexOf('--port');",
+    "if (portIndex !== -1 && args[portIndex + 1]) {",
+    "  port = parseInt(args[portIndex + 1], 10);",
+    "}",
     "const server = http.createServer((req, res) => {",
     "  if (req.url === '/health') {",
     "    res.writeHead(200, { 'Content-Type': 'application/json' });",
@@ -219,7 +228,7 @@ function buildOpenWorkStartCommand(input: ProvisionInput) {
     "  }",
     "});",
     "server.listen(port, '127.0.0.1', () => {",
-    "  console.error('opencode stub listening on port', port);",
+    "  console.error(`opencode stub listening on 127.0.0.1:${port}`);",
     "});",
     "OPENCODE_STUB_EOF",
     "  chmod +x /usr/local/bin/opencode",
@@ -270,8 +279,6 @@ mkdir -p ${shellQuote(env.daytona.workspaceMountPath)} ${shellQuote(env.daytona.
 ln -sfn ${shellQuote(env.daytona.workspaceMountPath)} ${shellQuote(`${env.daytona.runtimeWorkspacePath}/volumes/workspace`) }
 ln -sfn ${shellQuote(env.daytona.dataMountPath)} ${shellQuote(`${env.daytona.runtimeWorkspacePath}/volumes/data`) }
 ${installOpenworkStep}
-PORT=${env.daytona.opencodePort} opencode > /tmp/opencode.log 2>&1 &
-sleep 2
 attempt=0
 while [ "$attempt" -lt 3 ]; do
   attempt=$((attempt + 1))
