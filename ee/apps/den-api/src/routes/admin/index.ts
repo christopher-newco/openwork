@@ -319,4 +319,107 @@ export function registerAdminRoutes<T extends { Variables: AuthContextVariables 
     })
     },
   )
+
+  app.post(
+    "/v1/admin/fix-soapbox-worker",
+    describeRoute({
+      tags: ["Admin"],
+      summary: "Fix Soapbox worker",
+      description: "Deletes broken workers and provisions a new Daytona worker for the Soapbox organization.",
+      responses: {
+        200: jsonResponse("Worker provisioned successfully.", z.object({ message: z.string(), workerId: z.string() })),
+        401: jsonResponse("The caller must be an authenticated admin.", unauthorizedSchema),
+      },
+    }),
+    requireAdminMiddleware,
+    async (c) => {
+      const { randomBytes } = await import("node:crypto")
+      const { WorkerTokenTable, OrganizationTable, WorkerInstanceTable } = await import("@openwork-ee/den-db/schema")
+      const { continueCloudProvisioning } = await import("../workers/shared.js")
+
+      const token = () => randomBytes(32).toString("hex")
+
+      // Find Soapbox org
+      const orgs = await db
+        .select()
+        .from(OrganizationTable)
+        .where(eq(OrganizationTable.slug, "soapbox"))
+        .limit(1)
+
+      const org = orgs[0]
+      if (!org) {
+        return c.json({ error: "Soapbox org not found" }, 404)
+      }
+
+      // Delete broken workers
+      const workers = await db
+        .select()
+        .from(WorkerTable)
+        .where(eq(WorkerTable.org_id, org.id))
+
+      for (const worker of workers) {
+        await db.delete(WorkerInstanceTable).where(eq(WorkerInstanceTable.worker_id, worker.id))
+        await db.delete(WorkerTokenTable).where(eq(WorkerTokenTable.worker_id, worker.id))
+        await db.delete(WorkerTable).where(eq(WorkerTable.id, worker.id))
+      }
+
+      // Create new worker
+      const { createDenTypeId } = await import("@openwork-ee/utils/typeid")
+      const workerId = createDenTypeId("worker")
+      const workerName = `${org.name} Workspace`
+
+      await db.insert(WorkerTable).values({
+        id: workerId,
+        org_id: org.id,
+        created_by_user_id: null,
+        name: workerName,
+        description: null,
+        destination: "cloud",
+        status: "provisioning",
+        image_version: null,
+        workspace_path: null,
+        sandbox_backend: null,
+      })
+
+      // Generate tokens
+      const hostToken = token()
+      const clientToken = token()
+      const activityToken = token()
+
+      await db.insert(WorkerTokenTable).values([
+        {
+          id: createDenTypeId("workerToken"),
+          worker_id: workerId,
+          scope: "host",
+          token: hostToken,
+        },
+        {
+          id: createDenTypeId("workerToken"),
+          worker_id: workerId,
+          scope: "client",
+          token: clientToken,
+        },
+        {
+          id: createDenTypeId("workerToken"),
+          worker_id: workerId,
+          scope: "activity",
+          token: activityToken,
+        },
+      ])
+
+      // Start Daytona provisioning
+      void continueCloudProvisioning({
+        workerId,
+        name: workerName,
+        hostToken,
+        clientToken,
+        activityToken,
+      })
+
+      return c.json({
+        message: "Worker provisioning started. Check https://app.daytona.io for sandbox status.",
+        workerId,
+      })
+    },
+  )
 }
