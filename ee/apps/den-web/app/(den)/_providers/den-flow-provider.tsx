@@ -1731,7 +1731,7 @@ export function DenFlowProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [authToken]);
+  }, []);  // Run only on mount, not when authToken changes
 
   useEffect(() => {
     if (!user) {
