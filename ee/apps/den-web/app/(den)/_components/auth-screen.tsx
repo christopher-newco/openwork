@@ -71,25 +71,6 @@ export function AuthScreen() {
       return;
     }
 
-    // Check for redirect_uri parameter (web app OAuth callback)
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      const redirectUri = params.get("redirect_uri");
-      if (redirectUri) {
-        // External app wants us to redirect back after auth
-        // Route to /workspace which will handle the connection flow
-        const workspaceUrl = `/workspace?redirect_uri=${encodeURIComponent(redirectUri)}`;
-        if (!isSamePathname(pathname, "/workspace")) {
-          routingRef.current = true;
-          router.replace(workspaceUrl);
-          setTimeout(() => {
-            routingRef.current = false;
-          }, 1000);
-          return;
-        }
-      }
-    }
-
     // Always redirect to /workspace for auto-provisioning and connection
     if (!isSamePathname(pathname, "/workspace")) {
       routingRef.current = true;

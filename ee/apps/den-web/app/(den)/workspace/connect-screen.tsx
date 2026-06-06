@@ -28,15 +28,10 @@ export function ConnectScreen() {
       hasActiveWorker: !!activeWorker,
     });
 
-    // Check for redirect_uri parameter (external app OAuth callback)
-    const redirectUri = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("redirect_uri") : null;
-    console.log("[connect-screen] redirect_uri:", redirectUri);
-
     if (!user) {
       setStatus("Not authenticated. Redirecting to login...");
       setTimeout(() => {
-        const loginUrl = redirectUri ? `/?mode=sign-in&redirect_uri=${encodeURIComponent(redirectUri)}` : "/?mode=sign-in";
-        router.replace(loginUrl);
+        router.replace("/?mode=sign-in");
       }, 1000);
       return;
     }
@@ -118,53 +113,8 @@ export function ConnectScreen() {
         const openworkUrl = tokenData?.openworkUrl || worker.instanceUrl;
         const accessToken = tokenData?.clientToken || tokenData?.ownerToken || null;
 
-        // Check for external redirect_uri parameter
-        const redirectUri = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("redirect_uri") : null;
-
-        if (redirectUri) {
-          // External app wants auth credentials - create handoff grant and redirect
-          console.log("[connect-screen] Redirecting to external app:", redirectUri);
-          setStatus("Generating authentication grant...");
-
-          // Create a desktop handoff grant for the external app
-          fetch("/api/den/v1/auth/desktop-handoff", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ desktopScheme: "web" }),
-          })
-            .then((res) => res.json())
-            .then((data) => {
-              if (data.openworkUrl) {
-                // The handoff URL contains the grant - extract it
-                const grantUrl = new URL(data.openworkUrl);
-                const grant = grantUrl.searchParams.get("grant");
-
-                if (grant) {
-                  setStatus("Redirecting back to application...");
-                  const redirectUrl = new URL(redirectUri);
-                  redirectUrl.searchParams.set("grant", grant);
-                  redirectUrl.searchParams.set("denBaseUrl", window.location.origin);
-                  window.location.href = redirectUrl.toString();
-                } else {
-                  setError("Failed to generate authentication grant");
-                }
-              } else {
-                setError("Failed to generate authentication grant");
-              }
-            })
-            .catch((err) => {
-              console.error("[connect-screen] Handoff error:", err);
-              setError("Failed to generate authentication grant");
-            });
-
-          return;
-        }
-
-        // Default flow - connect to internal OpenWork app
-        const targetAppUrl = OPENWORK_APP_CONNECT_BASE_URL;
-
         console.log("[connect-screen] Building URL with:", {
-          appConnectBaseUrl: targetAppUrl,
+          appConnectBaseUrl: OPENWORK_APP_CONNECT_BASE_URL,
           openworkUrl,
           hasAccessToken: !!accessToken,
           workerId: worker.workerId,
@@ -172,7 +122,7 @@ export function ConnectScreen() {
         });
 
         const connectUrl = buildOpenworkAppConnectUrl(
-          targetAppUrl,
+          OPENWORK_APP_CONNECT_BASE_URL,
           openworkUrl,
           accessToken,
           worker.workerId,
@@ -187,9 +137,9 @@ export function ConnectScreen() {
           // Redirect to the worker
           window.location.href = connectUrl;
         } else {
-          const debugInfo = `Failed to build connection URL.\n\nMissing values:\n- appUrl: ${targetAppUrl || "MISSING"}\n- workerUrl: ${openworkUrl || "MISSING"}\n- token: ${accessToken ? "present" : "MISSING"}`;
+          const debugInfo = `Failed to build connection URL.\n\nMissing values:\n- appUrl: ${OPENWORK_APP_CONNECT_BASE_URL || "MISSING"}\n- workerUrl: ${openworkUrl || "MISSING"}\n- token: ${accessToken ? "present" : "MISSING"}`;
           alert(debugInfo);
-          setError(`Failed to build connection URL. Missing: ${!targetAppUrl ? "appUrl" : ""} ${!openworkUrl ? "workerUrl" : ""} ${!accessToken ? "token" : ""}`);
+          setError(`Failed to build connection URL. Missing: ${!OPENWORK_APP_CONNECT_BASE_URL ? "appUrl" : ""} ${!openworkUrl ? "workerUrl" : ""} ${!accessToken ? "token" : ""}`);
           setStatus("Connection error");
         }
       } catch (err) {
