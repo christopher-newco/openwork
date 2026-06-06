@@ -13,6 +13,7 @@ const PUBLIC_PATHS = [
   "/api/auth/email-otp/send-verification-otp",
   "/api/auth/email-otp/verify-email",
   "/sso/",
+  "/workspace",
 ];
 
 function isPublicPath(pathname: string): boolean {
