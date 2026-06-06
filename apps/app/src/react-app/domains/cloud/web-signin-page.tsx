@@ -1,18 +1,20 @@
 /** @jsxImportSource react */
-import { useEffect, useState } from "react";
+import { useEffect, useState, FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { readDenSettings } from "../../../app/lib/den";
 import { isWebDeployment } from "../../../app/lib/openwork-deployment";
 
 /**
  * Simple web-based sign-in page for multi-tenant deployments.
- *
- * Shows a "Sign in with GitHub" button that redirects to Den API OAuth,
- * which enforces org membership and redirects back with a session cookie.
+ * Uses email/password authentication with the Den API.
  */
 export function WebSigninPage() {
   const navigate = useNavigate();
   const [isChecking, setIsChecking] = useState(true);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     // Only show this page for web deployments
@@ -51,20 +53,45 @@ export function WebSigninPage() {
     checkSession();
   }, [navigate]);
 
-  const handleSignIn = () => {
+  const handleSignIn = async (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setIsLoading(true);
+
     const settings = readDenSettings();
     const apiBaseUrl = settings.apiBaseUrl;
 
     if (!apiBaseUrl) {
-      alert("Den API URL not configured");
+      setError("Den API URL not configured");
+      setIsLoading(false);
       return;
     }
 
-    // Redirect to Den API GitHub OAuth
-    const callbackUrl = `${window.location.origin}/connect`;
-    const oauthUrl = `${apiBaseUrl}/api/auth/github?callbackUrl=${encodeURIComponent(callbackUrl)}`;
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/auth/sign-in/email`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+        }),
+      });
 
-    window.location.href = oauthUrl;
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "Invalid email or password");
+      }
+
+      // Successfully signed in, redirect to connect
+      navigate("/connect", { replace: true });
+    } catch (err) {
+      console.error("[WebSigninPage] Sign in failed:", err);
+      setError(err instanceof Error ? err.message : "Sign in failed");
+      setIsLoading(false);
+    }
   };
 
   if (isChecking) {
@@ -95,22 +122,64 @@ export function WebSigninPage() {
           </p>
         </div>
 
-        <div className="mt-8">
+        <form onSubmit={handleSignIn} className="mt-8 space-y-6">
+          {error && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+              {error}
+            </div>
+          )}
+
+          <div className="space-y-4">
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                Email
+              </label>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                placeholder="you@example.com"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                Password
+              </label>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                placeholder="••••••••"
+              />
+            </div>
+          </div>
+
           <button
-            onClick={handleSignIn}
-            className="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            type="submit"
+            disabled={isLoading}
+            className="flex w-full items-center justify-center rounded-lg bg-blue-600 px-4 py-3 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <svg
-              viewBox="0 0 16 16"
-              aria-hidden="true"
-              className="h-5 w-5"
-              fill="currentColor"
-            >
-              <path d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.5 7.5 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
-            </svg>
-            Sign in with GitHub
+            {isLoading ? (
+              <>
+                <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                Signing in...
+              </>
+            ) : (
+              "Sign in"
+            )}
           </button>
-        </div>
+        </form>
 
         <p className="mt-4 text-center text-xs text-gray-500">
           Only authorized organization members can sign in
