@@ -162,6 +162,9 @@ export const auth = betterAuth({
   advanced: {
     cookie: {
       domain: env.cookieDomain,
+      name: "better-auth.session_token", // Remove __Secure- prefix to allow cross-subdomain sharing
+      secure: true, // Still require HTTPS
+      sameSite: "lax", // Allow cross-subdomain requests
     },
     ipAddress: {
       ipAddressHeaders: ["x-forwarded-for", "x-real-ip", "cf-connecting-ip"],
