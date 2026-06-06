@@ -71,16 +71,6 @@ export function AuthScreen() {
       return;
     }
 
-    // Always redirect to /workspace for auto-provisioning and connection
-    if (!isSamePathname(pathname, "/workspace")) {
-      routingRef.current = true;
-      router.replace("/workspace");
-      setTimeout(() => {
-        routingRef.current = false;
-      }, 1000);
-      return;
-    }
-
     routingRef.current = true;
     void resolveUserLandingRoute()
       .then((target) => {
