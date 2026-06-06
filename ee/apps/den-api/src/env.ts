@@ -101,6 +101,7 @@ const EnvSchema = z.object({
   STRIPE_SEAT_PRICE_ID: z.string().optional(),
   STRIPE_BILLING_SUCCESS_URL: z.string().optional(),
   STRIPE_BILLING_CANCEL_URL: z.string().optional(),
+  COOKIE_DOMAIN: z.string().optional(),
 }).superRefine((value, ctx) => {
   // Auto-detect database mode from URL if not explicitly set
   let inferredMode = value.DB_MODE
@@ -199,6 +200,7 @@ export const env = {
   planetscale: planetscaleCredentials,
   betterAuthSecret: parsed.BETTER_AUTH_SECRET,
   betterAuthUrl: normalizeOrigin(parsed.BETTER_AUTH_URL),
+  cookieDomain: optionalString(parsed.COOKIE_DOMAIN),
   mcpResourceUrl: optionalString(parsed.DEN_MCP_RESOURCE_URL)
     ? normalizeOrigin(parsed.DEN_MCP_RESOURCE_URL!)
     : devMode

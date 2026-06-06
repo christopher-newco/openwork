@@ -160,6 +160,9 @@ export const auth = betterAuth({
     skipStateCookieCheck: true,
   },
   advanced: {
+    cookie: {
+      domain: env.cookieDomain,
+    },
     ipAddress: {
       ipAddressHeaders: ["x-forwarded-for", "x-real-ip", "cf-connecting-ip"],
       ipv6Subnet: 64,
