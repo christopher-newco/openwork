@@ -60,6 +60,18 @@ export function AuthScreen() {
   const { user, sessionHydrated, desktopAuthRequested, resolveUserLandingRoute } = useDenFlow();
   const hasResolvedSession = sessionHydrated && Boolean(user) && !desktopAuthRequested;
 
+  // Store redirect_to parameter in sessionStorage before OAuth (which clears query params)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const searchParams = new URLSearchParams(window.location.search);
+    const redirectTo = searchParams.get("redirect_to");
+
+    if (redirectTo) {
+      window.sessionStorage.setItem("pending_redirect_to", redirectTo);
+    }
+  }, []);
+
   useEffect(() => {
     if (!hasResolvedSession || routingRef.current) {
       return;
@@ -71,10 +83,11 @@ export function AuthScreen() {
       return;
     }
 
-    // Check if this is a redirect from app.soapbox.build for workspace access
-    const searchParams = typeof window === "undefined" ? null : new URLSearchParams(window.location.search);
-    const redirectTo = searchParams?.get("redirect_to");
-    if (redirectTo === "workspace") {
+    // Check for stored redirect_to from before OAuth
+    const storedRedirectTo = typeof window === "undefined" ? null : window.sessionStorage.getItem("pending_redirect_to");
+    if (storedRedirectTo === "workspace") {
+      // Clear it so it doesn't persist
+      window.sessionStorage.removeItem("pending_redirect_to");
       routingRef.current = true;
       // Redirect to /workspace which will create handoff grant and redirect to app
       router.replace("/workspace");
