@@ -344,11 +344,25 @@ export async function proxyUpstream(
     ? new Uint8Array(await request.arrayBuffer())
     : null;
 
+  console.log("[proxyUpstream]", {
+    method: request.method,
+    targetPath,
+    primaryTargetUrl,
+    hasAuth: !!request.headers.get("authorization"),
+    hasCookie: !!request.headers.get("cookie"),
+  });
+
   let upstream: Response | null = null;
 
   try {
     upstream = await fetchUpstream(request, primaryTargetUrl, contentType, requestBody);
-  } catch {
+    console.log("[proxyUpstream] Response:", {
+      status: upstream.status,
+      contentType: upstream.headers.get("content-type"),
+    });
+  } catch (error) {
+    console.error("[proxyUpstream] Fetch error:", error);
+
     if (apiBase !== authFallbackBase) {
       try {
         upstream = await fetchUpstream(request, fallbackTargetUrl, contentType, requestBody);
