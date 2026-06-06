@@ -862,14 +862,28 @@ export function buildOpenworkAppConnectUrl(
   workerName: string | null,
   options?: { autoConnect?: boolean }
 ): string | null {
+  console.log("[buildOpenworkAppConnectUrl] Inputs:", {
+    appConnectBaseUrl,
+    openworkUrl,
+    hasAccessToken: !!accessToken,
+    workerId,
+    workerName,
+  });
+
   if (!appConnectBaseUrl || !openworkUrl || !accessToken) {
+    console.error("[buildOpenworkAppConnectUrl] Missing required fields:", {
+      hasAppUrl: !!appConnectBaseUrl,
+      hasWorkerUrl: !!openworkUrl,
+      hasToken: !!accessToken,
+    });
     return null;
   }
 
   let connectUrl: URL;
   try {
     connectUrl = new URL(appConnectBaseUrl);
-  } catch {
+  } catch (err) {
+    console.error("[buildOpenworkAppConnectUrl] Invalid URL:", err);
     return null;
   }
 

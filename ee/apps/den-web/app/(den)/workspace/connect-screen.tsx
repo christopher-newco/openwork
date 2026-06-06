@@ -92,21 +92,34 @@ export function ConnectScreen() {
         }
 
         // Build connect URL
+        const openworkUrl = tokens?.openworkUrl || worker.instanceUrl;
+        const accessToken = tokens?.clientToken || tokens?.ownerToken || null;
+
+        console.log("[connect-screen] Building URL with:", {
+          appConnectBaseUrl: OPENWORK_APP_CONNECT_BASE_URL,
+          openworkUrl,
+          hasAccessToken: !!accessToken,
+          workerId: worker.workerId,
+          workerName: worker.workerName,
+        });
+
         const connectUrl = buildOpenworkAppConnectUrl(
           OPENWORK_APP_CONNECT_BASE_URL,
-          tokens?.openworkUrl || worker.instanceUrl,
-          tokens?.clientToken || tokens?.ownerToken || null,
+          openworkUrl,
+          accessToken,
           worker.workerId,
           worker.workerName,
           { autoConnect: true }
         );
+
+        console.log("[connect-screen] Built URL:", connectUrl);
 
         if (connectUrl) {
           setStatus("Connecting to workspace...");
           // Redirect to the worker
           window.location.href = connectUrl;
         } else {
-          setError("Failed to build connection URL");
+          setError(`Failed to build connection URL. Missing: ${!OPENWORK_APP_CONNECT_BASE_URL ? "appUrl" : ""} ${!openworkUrl ? "workerUrl" : ""} ${!accessToken ? "token" : ""}`);
           setStatus("Connection error");
         }
       } catch (err) {
