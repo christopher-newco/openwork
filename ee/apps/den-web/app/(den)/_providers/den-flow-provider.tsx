@@ -238,14 +238,16 @@ export function DenFlowProvider({ children }: { children: ReactNode }) {
     activeWorker?.workerId ?? null,
     activeWorker?.workerName ?? null
   );
-  const openworkAppConnectUrl = buildOpenworkAppConnectUrl(
-    OPENWORK_APP_CONNECT_BASE_URL,
-    openworkConnectUrl,
-    preferredOpenworkToken,
-    activeWorker?.workerId ?? null,
-    activeWorker?.workerName ?? null,
-    { autoConnect: true }
-  );
+  const openworkAppConnectUrl = (OPENWORK_APP_CONNECT_BASE_URL && openworkConnectUrl && preferredOpenworkToken)
+    ? buildOpenworkAppConnectUrl(
+        OPENWORK_APP_CONNECT_BASE_URL,
+        openworkConnectUrl,
+        preferredOpenworkToken,
+        activeWorker?.workerId ?? null,
+        activeWorker?.workerName ?? null,
+        { autoConnect: true }
+      )
+    : null;
   const ownedWorkerCount = workers.filter((item) => item.isMine).length;
   const additionalWorkerNeedsPlan = Boolean(
     user &&
