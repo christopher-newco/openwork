@@ -162,7 +162,7 @@ export const auth = betterAuth({
   advanced: {
     cookie: {
       domain: env.cookieDomain,
-      name: "better-auth.session_token", // Remove __Secure- prefix to allow cross-subdomain sharing
+      name: "den.session", // Match the cookie name expected by workspace-proxy
       secure: true, // Still require HTTPS
       sameSite: "lax", // Allow cross-subdomain requests
     },
