@@ -648,6 +648,10 @@ export function buildDenAuthUrl(baseUrl: string, mode: "sign-in" | "sign-up"): s
   if (isDesktopDeployment()) {
     target.searchParams.set("desktopAuth", "1");
     target.searchParams.set("desktopScheme", "openwork");
+  } else if (typeof window !== "undefined") {
+    // Web deployment - include callback URL for redirect after auth
+    const callbackUrl = `${window.location.origin}/auth-callback`;
+    target.searchParams.set("redirect_uri", callbackUrl);
   }
   return target.toString();
 }

@@ -1,10 +1,10 @@
 /** @jsxImportSource react */
 
-import { useEffect, useSyncExternalStore, type ReactNode } from "react";
-import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import React, { useEffect, useSyncExternalStore, type ReactNode } from "react";
+import { Navigate, Route, Routes, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
-import { readDenBootstrapConfig, readDenSettings, PREDEFINED_WORKER_ID } from "../../app/lib/den";
-import { denSettingsChangedEvent, denSessionUpdatedEvent } from "../../app/lib/den-session-events";
+import { readDenBootstrapConfig, readDenSettings, PREDEFINED_WORKER_ID, createDenClient, normalizeDenBaseUrl, writeDenSettings } from "../../app/lib/den";
+import { denSettingsChangedEvent, denSessionUpdatedEvent, dispatchDenSessionUpdated } from "../../app/lib/den-session-events";
 import { useDenAuth } from "../domains/cloud/den-auth-provider";
 import { ForcedSigninPage } from "../domains/cloud/forced-signin-page";
 import { OrgOnboardingPage } from "../domains/cloud/org-onboarding-page";
@@ -21,6 +21,87 @@ import { SettingsRoute } from "./settings-route";
 import { ShellConfigProvider } from "./shell-config";
 import { WelcomeRoute } from "./welcome-route";
 
+
+/**
+ * Auth callback route for web deployments.
+ * Receives a handoff grant from admin.soapbox.build, exchanges it for an auth token,
+ * and then navigates to the connect/onboarding page.
+ */
+function AuthCallbackRoute() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [status, setStatus] = React.useState("Processing...");
+  const [error, setError] = React.useState<string | null>(null);
+
+  useEffect(() => {
+    const grant = searchParams.get("grant");
+    const denBaseUrl = searchParams.get("denBaseUrl");
+
+    if (!grant) {
+      setError("Missing authentication grant");
+      setTimeout(() => navigate("/signin", { replace: true }), 2000);
+      return;
+    }
+
+    const baseUrl = normalizeDenBaseUrl(denBaseUrl || "") || readDenSettings().baseUrl;
+
+    setStatus("Completing sign-in...");
+
+    createDenClient({ baseUrl })
+      .exchangeDesktopHandoff(grant)
+      .then((result) => {
+        if (!result.token) {
+          throw new Error("Failed to obtain authentication token");
+        }
+
+        writeDenSettings({
+          baseUrl,
+          authToken: result.token,
+          activeOrgId: null,
+          activeOrgSlug: null,
+          activeOrgName: null,
+        });
+
+        dispatchDenSessionUpdated({
+          status: "success",
+          baseUrl,
+          token: result.token,
+          user: result.user,
+          email: result.user?.email ?? null,
+        });
+
+        setStatus("Sign-in successful! Redirecting...");
+        setTimeout(() => {
+          navigate(PREDEFINED_WORKER_ID ? "/connect" : "/session", { replace: true });
+        }, 500);
+      })
+      .catch((err) => {
+        console.error("[auth-callback] Error:", err);
+        setError(err instanceof Error ? err.message : "Authentication failed");
+        setTimeout(() => navigate("/signin", { replace: true }), 3000);
+      });
+  }, [navigate, searchParams]);
+
+  return (
+    <div className="flex h-screen items-center justify-center bg-gray-50">
+      <div className="max-w-md rounded-lg border border-gray-200 bg-white p-8 shadow-sm">
+        <div className="space-y-4">
+          <div className="flex justify-center">
+            <div className="h-12 w-12 animate-spin rounded-full border-4 border-gray-200 border-t-blue-600" />
+          </div>
+          <h2 className="text-center text-xl font-semibold text-gray-900">
+            {error ? "Authentication Error" : "Signing In"}
+          </h2>
+          {error ? (
+            <p className="text-center text-sm text-red-600">{error}</p>
+          ) : (
+            <p className="text-center text-sm text-gray-600">{status}</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 type DenSigninGateProps = {
   children: ReactNode;
@@ -65,11 +146,11 @@ function DenSigninGate({ children }: DenSigninGateProps) {
 
     const path = location.pathname.toLowerCase();
     const onSignin = path === "/signin" || path.startsWith("/signin/");
-
+    const onAuthCallback = path === "/auth-callback" || path.startsWith("/auth-callback/");
     const onOnboarding = path === "/onboarding" || path.startsWith("/onboarding/");
 
     if (requireSignin) {
-      if (!denAuth.isSignedIn && !onSignin) {
+      if (!denAuth.isSignedIn && !onSignin && !onAuthCallback) {
         navigate("/signin", { replace: true });
       } else if (denAuth.isSignedIn && onSignin) {
         // Signed in — route to predefined worker connect if configured, otherwise onboarding
@@ -139,6 +220,14 @@ export function AppRoot() {
           <OpenworkRouteControlActions />
           <DenSigninGate>
             <Routes>
+              <Route
+                path="/auth-callback"
+                element={
+                  <DevProfiler id="AuthCallback">
+                    <AuthCallbackRoute />
+                  </DevProfiler>
+                }
+              />
               <Route
                 path="/signin"
                 element={
