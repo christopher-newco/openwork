@@ -142,6 +142,7 @@ function assertDaytonaConfig() {
   if (!env.daytona.apiKey) {
     throw new Error("DAYTONA_API_KEY is required for daytona provisioner")
   }
+  console.log(`[daytona] Using API key: ${env.daytona.apiKey.substring(0, 20)}... (${env.daytona.apiKey.length} chars)`)
 }
 
 function workerHint(workerId: WorkerId) {
