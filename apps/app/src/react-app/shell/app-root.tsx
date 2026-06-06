@@ -44,10 +44,12 @@ function AuthCallbackRoute() {
     }
 
     const baseUrl = normalizeDenBaseUrl(denBaseUrl || "") || readDenSettings().baseUrl;
+    const currentSettings = readDenSettings();
+    const apiBaseUrl = currentSettings.apiBaseUrl || readDenBootstrapConfig().apiBaseUrl;
 
     setStatus("Completing sign-in...");
 
-    createDenClient({ baseUrl })
+    createDenClient({ baseUrl, apiBaseUrl })
       .exchangeDesktopHandoff(grant)
       .then((result) => {
         if (!result.token) {
