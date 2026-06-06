@@ -1,27 +1,23 @@
 "use client";
 
-// Auto-provision and connect workers for new users using desktop handoff grant flow
+// Redirect to app using desktop handoff grant flow
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { OPENWORK_APP_CONNECT_BASE_URL, getWorkerStatusMeta, requestJson } from "../_lib/den-flow";
+import { OPENWORK_APP_CONNECT_BASE_URL, requestJson } from "../_lib/den-flow";
 import { useDenFlow } from "../_providers/den-flow-provider";
 
 export function ConnectScreen() {
   console.log("[connect-screen] Component rendering");
   const router = useRouter();
-  const { user, workers, workersLoadedOnce, checkWorkerStatus, launchWorker, ownedWorkerCount } = useDenFlow();
-  console.log("[connect-screen] Got context:", { user: !!user, workers: workers?.length, workersLoadedOnce });
+  const { user, sessionHydrated } = useDenFlow();
   const [status, setStatus] = useState<string>("Loading...");
   const [error, setError] = useState<string | null>(null);
-  const [isProvisioning, setIsProvisioning] = useState(false);
 
   useEffect(() => {
-    console.log("[connect-screen] Effect running:", {
-      hasUser: !!user,
-      workersLoadedOnce,
-      workersCount: workers.length,
-      ownedWorkerCount,
-    });
+    if (!sessionHydrated) {
+      setStatus("Checking authentication...");
+      return;
+    }
 
     if (!user) {
       setStatus("Not authenticated. Redirecting to login...");
@@ -31,60 +27,7 @@ export function ConnectScreen() {
       return;
     }
 
-    if (!workersLoadedOnce) {
-      setStatus("Loading workers...");
-      console.log("[connect-screen] Waiting for workers to load...");
-      return;
-    }
-
-    console.log("[connect-screen] Workers loaded:", { count: workers.length, ownedWorkerCount });
-
-    // Auto-provision worker if user doesn't have one
-    if (ownedWorkerCount === 0 && !isProvisioning) {
-      setIsProvisioning(true);
-      setStatus("Creating your workspace...");
-
-      const provisionWorker = async () => {
-        const result = await launchWorker({ source: "signup_auto" });
-        if (result === "error" || result === "limit") {
-          setError("Failed to create workspace. Please contact support.");
-          setStatus("Provisioning failed");
-        }
-        // Worker will appear in workers list and effect will re-run
-      };
-
-      void provisionWorker();
-      return;
-    }
-
-    // Get the user's worker (first owned worker)
-    const worker = workers.find((w) => w.isMine);
-    console.log("[connect-screen] Found worker:", { hasWorker: !!worker, workerId: worker?.workerId });
-    if (!worker) {
-      if (!isProvisioning) {
-        const debugMsg = `No workspace found. Workers: ${workers.length}, Owned: ${ownedWorkerCount}, All: ${JSON.stringify(workers.map(w => ({ id: w.workerId, isMine: w.isMine })))}`;
-        console.error("[connect-screen]", debugMsg);
-        alert(debugMsg);
-        setError("No workspace found");
-        setStatus("Worker not found");
-      }
-      return;
-    }
-
-    const statusMeta = getWorkerStatusMeta(worker.status);
-
-    if (statusMeta.bucket !== "ready") {
-      setStatus(`Worker is ${statusMeta.label.toLowerCase()}. Waiting for worker to be ready...`);
-      // Poll for status
-      const interval = setInterval(() => {
-        void checkWorkerStatus({ workerId: worker.workerId, quiet: true });
-      }, 3000);
-      return () => clearInterval(interval);
-    }
-
-    setStatus("Worker is ready. Creating secure handoff...");
-
-    // Use desktop handoff grant flow to securely transfer auth to the app
+    // Create handoff grant and redirect to app
     const connect = async () => {
       try {
         if (!OPENWORK_APP_CONNECT_BASE_URL) {
@@ -135,7 +78,7 @@ export function ConnectScreen() {
     };
 
     void connect();
-  }, [user, workers, workersLoadedOnce, checkWorkerStatus, launchWorker, ownedWorkerCount, isProvisioning, router]);
+  }, [user, sessionHydrated, router]);
 
   return (
     <section className="den-page flex w-full items-center justify-center py-8">
