@@ -30,6 +30,8 @@ proxy.on('error', (err, req, res) => {
 
 async function getWorkspaceConfig(sessionToken) {
   try {
+    console.log(`[getWorkspaceConfig] Fetching workers from ${DEN_API_BASE}/v1/workers`);
+
     // Get worker list
     const workersResponse = await fetch(`${DEN_API_BASE}/v1/workers`, {
       headers: {
@@ -38,18 +40,25 @@ async function getWorkspaceConfig(sessionToken) {
       },
     });
 
+    console.log(`[getWorkspaceConfig] Workers response status: ${workersResponse.status}`);
+
     if (!workersResponse.ok) {
+      const errorText = await workersResponse.text();
+      console.error(`[getWorkspaceConfig] Workers fetch failed: ${workersResponse.status} - ${errorText}`);
       return null;
     }
 
     const workersData = await workersResponse.json();
     const workers = workersData?.workers;
+    console.log(`[getWorkspaceConfig] Found ${workers?.length || 0} workers`);
 
     if (!Array.isArray(workers) || workers.length === 0) {
+      console.error('[getWorkspaceConfig] No workers found');
       return null;
     }
 
     const workerId = workers[0].id;
+    console.log(`[getWorkspaceConfig] Using worker: ${workerId}`);
 
     // Get worker tokens
     const tokensResponse = await fetch(`${DEN_API_BASE}/v1/workers/${workerId}/tokens`, {
@@ -59,7 +68,11 @@ async function getWorkspaceConfig(sessionToken) {
       },
     });
 
+    console.log(`[getWorkspaceConfig] Tokens response status: ${tokensResponse.status}`);
+
     if (!tokensResponse.ok) {
+      const errorText = await tokensResponse.text();
+      console.error(`[getWorkspaceConfig] Tokens fetch failed: ${tokensResponse.status} - ${errorText}`);
       return null;
     }
 
@@ -67,16 +80,20 @@ async function getWorkspaceConfig(sessionToken) {
     const instanceUrl = tokensData?.connect?.openworkUrl || tokensData?.worker?.instance?.url;
     const clientToken = tokensData?.tokens?.client;
 
+    console.log(`[getWorkspaceConfig] Instance URL: ${instanceUrl}, has token: ${!!clientToken}`);
+
     if (!instanceUrl || !clientToken) {
+      console.error('[getWorkspaceConfig] Missing instanceUrl or clientToken');
       return null;
     }
 
+    console.log(`[getWorkspaceConfig] Config ready: ${instanceUrl}`);
     return {
       target: instanceUrl,
       token: clientToken,
     };
   } catch (error) {
-    console.error('[workspace-proxy] Failed to get workspace config:', error);
+    console.error('[getWorkspaceConfig] Exception:', error);
     return null;
   }
 }
@@ -97,11 +114,14 @@ app.prepare().then(() => {
   const server = createServer(async (req, res) => {
     try {
       const parsedUrl = parse(req.url, true);
+      console.log(`[proxy] Incoming ${req.method} ${req.url}`);
 
       // Extract session token from cookie
       const sessionToken = getCookieValue(req.headers.cookie, 'den.session');
+      console.log(`[proxy] Session token: ${sessionToken ? 'present' : 'missing'}`);
 
       if (!sessionToken) {
+        console.log(`[proxy] No session, redirecting to ${DEN_AUTH_ORIGIN}`);
         res.writeHead(302, {
           Location: `${DEN_AUTH_ORIGIN}/?mode=sign-in&redirect=${encodeURIComponent(req.url)}`,
         });
@@ -110,14 +130,16 @@ app.prepare().then(() => {
       }
 
       // Get workspace configuration
+      console.log(`[proxy] Fetching workspace config from ${DEN_API_BASE}`);
       const config = await getWorkspaceConfig(sessionToken);
+      console.log(`[proxy] Workspace config: ${config ? `target=${config.target}` : 'null'}`);
 
       if (!config) {
-        res.writeHead(503, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          error: 'workspace_unavailable',
-          message: 'Workspace not available. Please ensure you have a workspace provisioned.',
-        }));
+        console.error('[proxy] Workspace config failed, redirecting to admin');
+        res.writeHead(302, {
+          Location: `${DEN_AUTH_ORIGIN}/?error=workspace_unavailable`,
+        });
+        res.end();
         return;
       }
 
@@ -125,7 +147,7 @@ app.prepare().then(() => {
       req.headers['authorization'] = `Bearer ${config.token}`;
       delete req.headers['cookie']; // Don't forward session cookie to Daytona
 
-      console.log(`[proxy] ${req.method} ${req.url} -> ${config.target}${req.url}`);
+      console.log(`[proxy] Proxying ${req.method} ${req.url} -> ${config.target}${req.url}`);
 
       // Proxy the request
       proxy.web(req, res, {
