@@ -165,7 +165,19 @@ function getJsonRedirectUrl(body: ArrayBuffer): string | null {
 function rewriteSetCookieDomain(cookie: string): string {
   // Remove Domain attribute so cookie defaults to current domain
   // This allows cross-domain proxying to work (API cookies set on admin domain)
-  return cookie.replace(/;\s*Domain=[^;]+/gi, '');
+  let rewritten = cookie.replace(/;\s*Domain=[^;]+/gi, '');
+
+  // Ensure SameSite is set to Lax or None for cross-site usage
+  if (!rewritten.includes('SameSite=')) {
+    rewritten += '; SameSite=Lax';
+  }
+
+  console.log('[rewriteSetCookieDomain]', {
+    original: cookie.substring(0, 100),
+    rewritten: rewritten.substring(0, 100)
+  });
+
+  return rewritten;
 }
 
 function copySetCookieHeaders(upstreamHeaders: Headers, responseHeaders: Headers): void {
