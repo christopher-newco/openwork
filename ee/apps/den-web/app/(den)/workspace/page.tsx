@@ -1,5 +1,5 @@
-import { ConnectScreen } from "./connect-screen";
+import { WorkspaceViewer } from "./workspace-viewer";
 
-export default function ConnectPage() {
-  return <ConnectScreen />;
+export default function WorkspacePage() {
+  return <WorkspaceViewer />;
 }
