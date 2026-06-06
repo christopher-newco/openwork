@@ -19,7 +19,6 @@ export function WorkspaceViewer() {
   const [status, setStatus] = useState<string>("Loading workspace...");
   const [error, setError] = useState<string | null>(null);
   const [worker, setWorker] = useState<WorkerData | null>(null);
-  const [workspaceUrl, setWorkspaceUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (!sessionHydrated) {
@@ -109,7 +108,7 @@ export function WorkspaceViewer() {
         }
 
         // Fetch workspaces from the worker to get the full URL
-        setStatus("Connecting to workspace...");
+        setStatus("Redirecting to workspace...");
 
         try {
           const workspacesResponse = await fetch(`${workerData.instanceUrl}/workspaces`, {
@@ -126,8 +125,8 @@ export function WorkspaceViewer() {
 
             if (workspaceId) {
               const fullUrl = `${workerData.instanceUrl}/w/${encodeURIComponent(workspaceId)}?token=${encodeURIComponent(tokens.client)}`;
-              setWorkspaceUrl(fullUrl);
-              setStatus("Connected");
+              // Direct redirect - no iframe overhead
+              window.location.href = fullUrl;
               return;
             }
           }
@@ -137,8 +136,8 @@ export function WorkspaceViewer() {
 
         // Fallback to base URL with token
         const fallbackUrl = `${workerData.instanceUrl}?token=${encodeURIComponent(tokens.client)}`;
-        setWorkspaceUrl(fallbackUrl);
-        setStatus("Connected");
+        // Direct redirect - no iframe overhead
+        window.location.href = fallbackUrl;
       } catch (err) {
         console.error("[workspace-viewer] Error loading workspace:", err);
         setError(err instanceof Error ? err.message : "Failed to load workspace");
@@ -182,63 +181,37 @@ export function WorkspaceViewer() {
     );
   }
 
-  if (!workspaceUrl) {
-    return (
-      <section className="den-page flex w-full items-center justify-center py-8">
-        <div className="den-frame max-w-md p-8">
-          <div className="space-y-6">
-            <div className="flex items-center justify-center">
-              <img src="/openwork-logo-transparent.svg" alt="OpenWork" className="h-12 w-auto" />
-            </div>
+  // Show loading state while redirecting
+  return (
+    <section className="den-page flex w-full items-center justify-center py-8">
+      <div className="den-frame max-w-md p-8">
+        <div className="space-y-6">
+          <div className="flex items-center justify-center">
+            <img src="/openwork-logo-transparent.svg" alt="OpenWork" className="h-12 w-auto" />
+          </div>
 
-            <div className="space-y-3">
-              <h1 className="text-center text-2xl font-semibold text-[var(--dls-text-primary)]">
-                Loading Workspace
-              </h1>
+          <div className="space-y-3">
+            <h1 className="text-center text-2xl font-semibold text-[var(--dls-text-primary)]">
+              Loading Workspace
+            </h1>
 
-              <div className="rounded-lg border border-[var(--dls-border)] bg-[var(--dls-hover)]/60 p-4">
-                <div className="flex items-start gap-3">
-                  <span className="relative mt-1 flex h-2.5 w-2.5 shrink-0">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--dls-accent)] opacity-30" />
-                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[var(--dls-accent)]" />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-[var(--dls-text-primary)]">{status}</p>
-                    <p className="mt-1 text-xs text-[var(--dls-text-secondary)]">
-                      Please wait while we prepare your workspace
-                    </p>
-                  </div>
+            <div className="rounded-lg border border-[var(--dls-border)] bg-[var(--dls-hover)]/60 p-4">
+              <div className="flex items-start gap-3">
+                <span className="relative mt-1 flex h-2.5 w-2.5 shrink-0">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--dls-accent)] opacity-30" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[var(--dls-accent)]" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-[var(--dls-text-primary)]">{status}</p>
+                  <p className="mt-1 text-xs text-[var(--dls-text-secondary)]">
+                    Please wait while we prepare your workspace
+                  </p>
                 </div>
               </div>
             </div>
           </div>
         </div>
-      </section>
-    );
-  }
-
-  return (
-    <div className="h-screen w-screen flex flex-col bg-black">
-      <div className="flex-shrink-0 border-b border-gray-800 bg-gray-900 px-4 py-2 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <img src="/openwork-mark.svg" alt="OpenWork" className="h-6 w-6" />
-          <span className="text-sm font-medium text-white">
-            {worker?.name || "Workspace"}
-          </span>
-        </div>
-        <a
-          href="/"
-          className="text-xs text-gray-400 hover:text-white transition-colors"
-        >
-          Exit
-        </a>
       </div>
-      <iframe
-        src={workspaceUrl}
-        className="flex-1 w-full border-0"
-        allow="clipboard-read; clipboard-write"
-        sandbox="allow-same-origin allow-scripts allow-forms allow-downloads allow-modals allow-popups"
-      />
-    </div>
+    </section>
   );
 }
