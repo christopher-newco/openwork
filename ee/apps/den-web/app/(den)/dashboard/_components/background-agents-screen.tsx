@@ -18,8 +18,6 @@ import {
 import { DenInput } from "../../_components/ui/input";
 import { DashboardPageTemplate } from "../../_components/ui/dashboard-page-template";
 import {
-  OPENWORK_APP_CONNECT_BASE_URL,
-  buildOpenworkAppConnectUrl,
   buildOpenworkDeepLink,
   getErrorMessage,
   getWorkerStatusMeta,
@@ -332,14 +330,8 @@ export function BackgroundAgentsScreen() {
         openworkUrl: tokens.openworkUrl,
         ownerToken: tokens.ownerToken,
         clientToken: tokens.clientToken,
-        openworkAppConnectUrl: buildOpenworkAppConnectUrl(
-          OPENWORK_APP_CONNECT_BASE_URL,
-          tokens.openworkUrl,
-          tokens.clientToken,
-          workerId,
-          workerName,
-          { autoConnect: true },
-        ),
+        // Direct link to workspace proxy - handles auth and proxying server-side
+        openworkAppConnectUrl: "https://app.soapbox.build",
         openworkDeepLink: buildOpenworkDeepLink(
           tokens.openworkUrl,
           tokens.clientToken,
