@@ -343,7 +343,7 @@ export function registerAdminRoutes<T extends { Variables: AuthContextVariables 
       const orgs = await db
         .select()
         .from(OrganizationTable)
-        .where(eq(OrganizationTable.slug, "soapbox"))
+        .where(eq(OrganizationTable.name, "Soapbox"))
         .limit(1)
 
       const org = orgs[0]
