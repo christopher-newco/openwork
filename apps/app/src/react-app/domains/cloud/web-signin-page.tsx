@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { readDenSettings } from "../../../app/lib/den";
 import { isWebDeployment } from "../../../app/lib/openwork-deployment";
 import { Button } from "@/components/ui/button";
+import { useBootState } from "../../shell/boot-state";
 
 /**
  * Simple web-based sign-in page for multi-tenant deployments.
@@ -11,11 +12,17 @@ import { Button } from "@/components/ui/button";
  */
 export function WebSigninPage() {
   const navigate = useNavigate();
+  const { markRouteReady } = useBootState();
   const [isChecking, setIsChecking] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Mark route as ready to dismiss loading overlay
+    markRouteReady();
+  }, [markRouteReady]);
 
   useEffect(() => {
     // Only show this page for web deployments
