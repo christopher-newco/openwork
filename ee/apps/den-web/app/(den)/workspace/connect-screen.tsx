@@ -1,19 +1,15 @@
 "use client";
 
-// Auto-provision and connect workers for new users
+// Auto-provision and connect workers for new users using desktop handoff grant flow
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import {
-  OPENWORK_APP_CONNECT_BASE_URL,
-  buildOpenworkAppConnectUrl,
-  getWorkerStatusMeta,
-} from "../_lib/den-flow";
+import { OPENWORK_APP_CONNECT_BASE_URL, getWorkerStatusMeta, requestJson } from "../_lib/den-flow";
 import { useDenFlow } from "../_providers/den-flow-provider";
 
 export function ConnectScreen() {
   console.log("[connect-screen] Component rendering");
   const router = useRouter();
-  const { user, workers, workersLoadedOnce, checkWorkerStatus, generateWorkerToken, activeWorker, launchWorker, ownedWorkerCount } = useDenFlow();
+  const { user, workers, workersLoadedOnce, checkWorkerStatus, launchWorker, ownedWorkerCount } = useDenFlow();
   console.log("[connect-screen] Got context:", { user: !!user, workers: workers?.length, workersLoadedOnce });
   const [status, setStatus] = useState<string>("Loading...");
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +21,6 @@ export function ConnectScreen() {
       workersLoadedOnce,
       workersCount: workers.length,
       ownedWorkerCount,
-      hasActiveWorker: !!activeWorker,
     });
 
     if (!user) {
@@ -87,69 +82,60 @@ export function ConnectScreen() {
       return () => clearInterval(interval);
     }
 
-    setStatus("Worker is ready. Fetching connection credentials...");
+    setStatus("Worker is ready. Creating secure handoff...");
 
-    // Fetch worker tokens and connect
+    // Use desktop handoff grant flow to securely transfer auth to the app
     const connect = async () => {
       try {
-        // Generate token if needed
-        let tokenData = activeWorker;
-        if (!activeWorker?.clientToken && !activeWorker?.ownerToken) {
-          setStatus("Generating access token...");
-          const newTokens = await generateWorkerToken();
-          if (!newTokens) {
-            setError("Failed to generate access token");
-            setStatus("Token generation failed");
-            return;
-          }
-          // Use worker as the base and merge in the new tokens
-          tokenData = {
-            ...worker,
-            ...newTokens,
-          } as typeof activeWorker;
+        if (!OPENWORK_APP_CONNECT_BASE_URL) {
+          setError("App connection URL not configured");
+          setStatus("Configuration error");
+          return;
         }
 
-        // Build connect URL
-        const openworkUrl = tokenData?.openworkUrl || worker.instanceUrl;
-        const accessToken = tokenData?.clientToken || tokenData?.ownerToken || null;
+        setStatus("Generating handoff token...");
 
-        console.log("[connect-screen] Building URL with:", {
-          appConnectBaseUrl: OPENWORK_APP_CONNECT_BASE_URL,
-          openworkUrl,
-          hasAccessToken: !!accessToken,
-          workerId: worker.workerId,
-          workerName: worker.workerName,
-        });
-
-        const connectUrl = buildOpenworkAppConnectUrl(
-          OPENWORK_APP_CONNECT_BASE_URL,
-          openworkUrl,
-          accessToken,
-          worker.workerId,
-          worker.workerName,
-          { autoConnect: true }
+        // Create desktop handoff grant
+        const { response, payload } = await requestJson(
+          "/v1/auth/desktop-handoff",
+          { method: "POST", body: JSON.stringify({}) },
+          12000
         );
 
-        console.log("[connect-screen] Built URL:", connectUrl);
-
-        if (connectUrl) {
-          setStatus("Connecting to workspace...");
-          // Redirect to the worker
-          window.location.href = connectUrl;
-        } else {
-          const debugInfo = `Failed to build connection URL.\n\nMissing values:\n- appUrl: ${OPENWORK_APP_CONNECT_BASE_URL || "MISSING"}\n- workerUrl: ${openworkUrl || "MISSING"}\n- token: ${accessToken ? "present" : "MISSING"}`;
-          alert(debugInfo);
-          setError(`Failed to build connection URL. Missing: ${!OPENWORK_APP_CONNECT_BASE_URL ? "appUrl" : ""} ${!openworkUrl ? "workerUrl" : ""} ${!accessToken ? "token" : ""}`);
-          setStatus("Connection error");
+        if (!response.ok || !payload || typeof payload !== "object" || !("grant" in payload)) {
+          console.error("[connect-screen] Handoff grant failed:", payload);
+          setError("Failed to create secure handoff");
+          setStatus("Handoff failed");
+          return;
         }
+
+        const grant = typeof payload.grant === "string" ? payload.grant : null;
+        if (!grant) {
+          setError("Invalid handoff grant");
+          setStatus("Handoff failed");
+          return;
+        }
+
+        // Build auth callback URL for the app
+        const appUrl = new URL(OPENWORK_APP_CONNECT_BASE_URL);
+        appUrl.pathname = "/auth-callback";
+        appUrl.searchParams.set("grant", grant);
+        appUrl.searchParams.set("denBaseUrl", window.location.origin);
+
+        console.log("[connect-screen] Redirecting to app:", appUrl.toString());
+        setStatus("Connecting to workspace...");
+
+        // Redirect to the app, which will exchange the grant and connect to the worker
+        window.location.href = appUrl.toString();
       } catch (err) {
+        console.error("[connect-screen] Connection error:", err);
         setError(err instanceof Error ? err.message : "Failed to connect");
         setStatus("Connection failed");
       }
     };
 
     void connect();
-  }, [user, workers, workersLoadedOnce, activeWorker, checkWorkerStatus, generateWorkerToken, launchWorker, ownedWorkerCount, isProvisioning, router]);
+  }, [user, workers, workersLoadedOnce, checkWorkerStatus, launchWorker, ownedWorkerCount, isProvisioning, router]);
 
   return (
     <section className="den-page flex w-full items-center justify-center py-8">
