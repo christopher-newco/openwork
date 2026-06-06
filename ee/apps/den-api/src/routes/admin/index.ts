@@ -408,18 +408,31 @@ export function registerAdminRoutes<T extends { Variables: AuthContextVariables 
       ])
 
       // Start Daytona provisioning
-      void continueCloudProvisioning({
-        workerId,
-        name: workerName,
-        hostToken,
-        clientToken,
-        activityToken,
-      })
+      console.log(`[fix-soapbox-worker] Starting Daytona provisioning for ${workerId}`)
 
-      return c.json({
-        message: "Worker provisioning started. Check https://app.daytona.io for sandbox status.",
-        workerId,
-      })
+      try {
+        await continueCloudProvisioning({
+          workerId,
+          name: workerName,
+          hostToken,
+          clientToken,
+          activityToken,
+        })
+
+        return c.json({
+          message: "Worker provisioned successfully!",
+          workerId,
+        })
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        console.error(`[fix-soapbox-worker] Provisioning failed immediately: ${errorMessage}`)
+
+        return c.json({
+          error: "provisioning_failed",
+          message: errorMessage,
+          workerId,
+        }, 500)
+      }
     },
   )
 }
