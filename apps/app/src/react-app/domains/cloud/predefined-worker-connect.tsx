@@ -12,6 +12,7 @@ import {
 } from "@/app/lib/den";
 import { workspaceBootstrap } from "@/app/lib/desktop";
 import { isDesktopRuntime } from "@/app/utils";
+import { isWebDeployment } from "@/app/lib/openwork-deployment";
 import {
   Page,
   PageBackground,
@@ -52,6 +53,38 @@ export function PredefinedWorkerConnect() {
       setStatus("no_predefined_worker");
       navigate("/session", { replace: true });
     }
+  }, [navigate]);
+
+  // For web deployments, check session first
+  useEffect(() => {
+    if (!isWebDeployment() || !PREDEFINED_WORKER_ID) {
+      return;
+    }
+
+    const checkSession = async () => {
+      const settings = readDenSettings();
+      const apiBaseUrl = settings.apiBaseUrl;
+
+      if (!apiBaseUrl) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`${apiBaseUrl}/v1/me`, {
+          credentials: "include",
+        });
+
+        if (!response.ok) {
+          // No session, redirect to sign in
+          navigate("/web-signin", { replace: true });
+        }
+      } catch (error) {
+        console.error("[PredefinedWorkerConnect] Session check failed:", error);
+        navigate("/web-signin", { replace: true });
+      }
+    };
+
+    checkSession();
   }, [navigate]);
 
   const settings = readDenSettings();

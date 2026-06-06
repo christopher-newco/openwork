@@ -7,6 +7,7 @@ import { readDenBootstrapConfig, readDenSettings, PREDEFINED_WORKER_ID, createDe
 import { denSettingsChangedEvent, denSessionUpdatedEvent, dispatchDenSessionUpdated } from "../../app/lib/den-session-events";
 import { useDenAuth } from "../domains/cloud/den-auth-provider";
 import { ForcedSigninPage } from "../domains/cloud/forced-signin-page";
+import { WebSigninPage } from "../domains/cloud/web-signin-page";
 import { OrgOnboardingPage } from "../domains/cloud/org-onboarding-page";
 import { PredefinedWorkerConnect } from "../domains/cloud/predefined-worker-connect";
 import { NewProvidersToast } from "./new-providers-toast";
@@ -223,6 +224,14 @@ export function AppRoot() {
           <DenSigninGate>
             <Routes>
               <Route
+                path="/web-signin"
+                element={
+                  <DevProfiler id="WebSigninRoute">
+                    <WebSigninPage />
+                  </DevProfiler>
+                }
+              />
+              <Route
                 path="/auth-callback"
                 element={
                   <DevProfiler id="AuthCallback">
@@ -310,10 +319,15 @@ export function AppRoot() {
                   </DevProfiler>
                 }
               />
-              {/* Default + fallback: land on the session view. Users open
-                  settings deliberately via the sidebar or command palette. */}
-              <Route path="/" element={<Navigate to="/session" replace />} />
-              <Route path="*" element={<Navigate to="/session" replace />} />
+              {/* Default + fallback: land on the session view or connect for predefined worker. */}
+              <Route
+                path="/"
+                element={<Navigate to={PREDEFINED_WORKER_ID ? "/connect" : "/session"} replace />}
+              />
+              <Route
+                path="*"
+                element={<Navigate to={PREDEFINED_WORKER_ID ? "/connect" : "/session"} replace />}
+              />
             </Routes>
           </DenSigninGate>
         </OpenworkControlProvider>
