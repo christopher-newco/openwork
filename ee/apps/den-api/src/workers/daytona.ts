@@ -205,7 +205,7 @@ function buildOpenWorkStartCommand(input: ProvisionInput) {
     "fi",
     "if ! command -v opencode >/dev/null 2>&1; then",
     "  echo 'Installing opencode...' >&2",
-    "  curl -fsSL https://raw.githubusercontent.com/openworklabs/openwork-orchestrator/main/scripts/install-opencode.mjs | node",
+    "  wget -O /tmp/opencode https://github.com/openworklabs/opencode/releases/latest/download/opencode-linux-x64 && chmod +x /tmp/opencode && mv /tmp/opencode /usr/local/bin/opencode",
     "fi",
     "if ! command -v opencode >/dev/null 2>&1; then",
     "  echo 'opencode installation failed' >&2",
