@@ -102,27 +102,28 @@ export function PredefinedWorkerConnect() {
     isPending: isLoadingWorker,
   } = useQuery({
     queryKey: ["den-worker", PREDEFINED_WORKER_ID, orgId, settings.baseUrl],
-    enabled: Boolean(PREDEFINED_WORKER_ID && settings.authToken && orgId),
+    enabled: Boolean(settings.authToken && orgId),
     queryFn: () => denClient.listWorkers(orgId),
   });
 
   // Fetch worker tokens
-  const worker = workerList?.find((w: DenWorkerSummary) => w.workerId === PREDEFINED_WORKER_ID);
+  // If PREDEFINED_WORKER_ID is set, use it. Otherwise use the first available worker for the org.
+  const worker = PREDEFINED_WORKER_ID
+    ? workerList?.find((w: DenWorkerSummary) => w.workerId === PREDEFINED_WORKER_ID)
+    : workerList?.[0];
 
   const {
     data: tokens,
     error: tokensError,
     isPending: isLoadingTokens,
   } = useQuery({
-    queryKey: ["den-worker-tokens", PREDEFINED_WORKER_ID, orgId, settings.baseUrl],
-    enabled: Boolean(worker && worker.status === "ready" && orgId),
-    queryFn: () => denClient.getWorkerTokens(PREDEFINED_WORKER_ID, orgId),
+    queryKey: ["den-worker-tokens", worker?.workerId, orgId, settings.baseUrl],
+    enabled: Boolean(worker && worker.status === "ready" && orgId && worker.workerId),
+    queryFn: () => denClient.getWorkerTokens(worker!.workerId, orgId),
   });
 
   // Handle auto-connect
   useEffect(() => {
-    if (!PREDEFINED_WORKER_ID) return;
-
     if (!orgId) {
       setStatus("loading_worker");
       return;
@@ -147,7 +148,11 @@ export function PredefinedWorkerConnect() {
 
     if (!worker) {
       setStatus("error");
-      setError(`Worker ${PREDEFINED_WORKER_ID} not found`);
+      setError(
+        PREDEFINED_WORKER_ID
+          ? `Worker ${PREDEFINED_WORKER_ID} not found`
+          : "No workspace found for your organization. Please contact your administrator."
+      );
       return;
     }
 

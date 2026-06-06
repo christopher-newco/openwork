@@ -173,6 +173,7 @@ export function OrgDashboardProvider({
     setMutationBusy("create-organization");
     setOrgError(null);
     try {
+      // Step 1: Create the organization
       const { response, payload } = await requestJson(
         "/v1/org",
         {
@@ -194,6 +195,32 @@ export function OrgDashboardProvider({
 
       if (!nextSlug) {
         throw new Error("Organization was created, but no slug was returned.");
+      }
+
+      // Step 2: Auto-provision a worker for the new org
+      try {
+        const workerName = `${trimmed} Workspace`;
+        const { response: workerResponse, payload: workerPayload } = await requestJson(
+          "/v1/workers",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              name: workerName,
+              destination: "cloud"
+            }),
+          },
+          12000,
+        );
+
+        if (!workerResponse.ok) {
+          console.error("[createOrganization] Worker provisioning failed:", workerPayload);
+          // Don't throw - org was created successfully, worker can be created later
+        } else {
+          console.log("[createOrganization] Worker provisioned successfully for", trimmed);
+        }
+      } catch (workerError) {
+        console.error("[createOrganization] Worker provisioning error:", workerError);
+        // Don't throw - org was created successfully, worker can be created later
       }
 
       router.push(getOrgDashboardRoute(nextSlug));
