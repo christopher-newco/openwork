@@ -361,6 +361,7 @@ export async function continueCloudProvisioning(input: {
 
     const message = error instanceof Error ? error.message : "provisioning_failed"
     console.error(`[workers] provisioning failed for ${input.workerId}: ${message}`)
+    throw error
   }
 }
 
