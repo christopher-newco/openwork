@@ -5,11 +5,11 @@ nixPkgs = ["nodejs_20"]
 cmds = ["npm install"]
 
 [phases.build]
-# Skip Next.js build - we don't need it for the proxy
-cmds = []
+# Build Next.js for server.mjs (it calls app.prepare())
+cmds = ["npm run build"]
 
 [start]
-# Run our custom proxy server, not Next.js static serve
+# Run our custom proxy server (calls Next.js but doesn't use it for routing)
 cmd = "NODE_ENV=production node server.mjs"
 
 [variables]
