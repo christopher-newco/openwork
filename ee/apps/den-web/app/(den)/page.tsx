@@ -1,11 +1,14 @@
 import { AuthScreen } from "./_components/auth-screen";
 import { SoapboxAuthScreen } from "./_components/soapbox-auth-screen";
 
-// Detect if this is a Soapbox deployment
-const isSoapboxMode = process.env.NEXT_PUBLIC_SOAPBOX_MODE === "true";
-
 export default function HomePage() {
-  // Use simplified Soapbox auth screen in Soapbox mode
+  // Server-side runtime check for Soapbox mode
+  // Check both NEXT_PUBLIC and server-only env var
+  const isSoapboxMode =
+    process.env.NEXT_PUBLIC_SOAPBOX_MODE === "true" ||
+    process.env.SOAPBOX_MODE === "true" ||
+    process.env.RAILWAY_STATIC_URL?.includes("soapbox");
+
   if (isSoapboxMode) {
     return <SoapboxAuthScreen />;
   }
@@ -13,3 +16,6 @@ export default function HomePage() {
   // Otherwise use full OpenWork auth screen
   return <AuthScreen />;
 }
+
+// Force dynamic rendering to check env var at runtime
+export const dynamic = 'force-dynamic';
