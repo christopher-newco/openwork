@@ -11,13 +11,23 @@ import {
 import { useDenFlow } from "../_providers/den-flow-provider";
 
 export function ConnectScreen() {
+  console.log("[connect-screen] Component rendering");
   const router = useRouter();
   const { user, workers, workersLoadedOnce, checkWorkerStatus, generateWorkerToken, activeWorker, launchWorker, ownedWorkerCount } = useDenFlow();
+  console.log("[connect-screen] Got context:", { user: !!user, workers: workers?.length, workersLoadedOnce });
   const [status, setStatus] = useState<string>("Loading...");
   const [error, setError] = useState<string | null>(null);
   const [isProvisioning, setIsProvisioning] = useState(false);
 
   useEffect(() => {
+    console.log("[connect-screen] Effect running:", {
+      hasUser: !!user,
+      workersLoadedOnce,
+      workersCount: workers.length,
+      ownedWorkerCount,
+      hasActiveWorker: !!activeWorker,
+    });
+
     if (!user) {
       setStatus("Not authenticated. Redirecting to login...");
       setTimeout(() => {
@@ -28,8 +38,11 @@ export function ConnectScreen() {
 
     if (!workersLoadedOnce) {
       setStatus("Loading workers...");
+      console.log("[connect-screen] Waiting for workers to load...");
       return;
     }
+
+    console.log("[connect-screen] Workers loaded:", { count: workers.length, ownedWorkerCount });
 
     // Auto-provision worker if user doesn't have one
     if (ownedWorkerCount === 0 && !isProvisioning) {
@@ -51,8 +64,12 @@ export function ConnectScreen() {
 
     // Get the user's worker (first owned worker)
     const worker = workers.find((w) => w.isMine);
+    console.log("[connect-screen] Found worker:", { hasWorker: !!worker, workerId: worker?.workerId });
     if (!worker) {
       if (!isProvisioning) {
+        const debugMsg = `No workspace found. Workers: ${workers.length}, Owned: ${ownedWorkerCount}, All: ${JSON.stringify(workers.map(w => ({ id: w.workerId, isMine: w.isMine })))}`;
+        console.error("[connect-screen]", debugMsg);
+        alert(debugMsg);
         setError("No workspace found");
         setStatus("Worker not found");
       }
