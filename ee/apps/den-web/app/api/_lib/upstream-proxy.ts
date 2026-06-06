@@ -13,7 +13,8 @@ const configuredCorsOrigins = splitCsv(process.env.DEN_CORS_ORIGINS ?? process.e
 const localDevCorsOrigins = process.env.OPENWORK_DEV_MODE === "1"
   ? [`http://localhost:${appPort}`, `http://127.0.0.1:${appPort}`]
   : [];
-const corsOrigins = Array.from(new Set([...configuredCorsOrigins, ...localDevCorsOrigins]));
+const productionCorsOrigins = ["https://admin.soapbox.build", "https://app.soapbox.build"];
+const corsOrigins = Array.from(new Set([...configuredCorsOrigins, ...localDevCorsOrigins, ...productionCorsOrigins]));
 
 type ProxyOptions = {
   routePrefix: string;
