@@ -119,6 +119,8 @@ export function ConnectScreen() {
           // Redirect to the worker
           window.location.href = connectUrl;
         } else {
+          const debugInfo = `Failed to build connection URL.\n\nMissing values:\n- appUrl: ${OPENWORK_APP_CONNECT_BASE_URL || "MISSING"}\n- workerUrl: ${openworkUrl || "MISSING"}\n- token: ${accessToken ? "present" : "MISSING"}`;
+          alert(debugInfo);
           setError(`Failed to build connection URL. Missing: ${!OPENWORK_APP_CONNECT_BASE_URL ? "appUrl" : ""} ${!openworkUrl ? "workerUrl" : ""} ${!accessToken ? "token" : ""}`);
           setStatus("Connection error");
         }
