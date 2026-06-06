@@ -162,13 +162,19 @@ function getJsonRedirectUrl(body: ArrayBuffer): string | null {
   return null;
 }
 
+function rewriteSetCookieDomain(cookie: string): string {
+  // Remove Domain attribute so cookie defaults to current domain
+  // This allows cross-domain proxying to work (API cookies set on admin domain)
+  return cookie.replace(/;\s*Domain=[^;]+/gi, '');
+}
+
 function copySetCookieHeaders(upstreamHeaders: Headers, responseHeaders: Headers): void {
   const getSetCookie = (upstreamHeaders as Headers & { getSetCookie?: () => string[] }).getSetCookie;
   if (typeof getSetCookie === "function") {
     const cookies = getSetCookie.call(upstreamHeaders);
     for (const cookie of cookies) {
       if (cookie) {
-        responseHeaders.append("set-cookie", cookie);
+        responseHeaders.append("set-cookie", rewriteSetCookieDomain(cookie));
       }
     }
     return;
@@ -176,7 +182,7 @@ function copySetCookieHeaders(upstreamHeaders: Headers, responseHeaders: Headers
 
   const cookie = upstreamHeaders.get("set-cookie");
   if (cookie) {
-    responseHeaders.append("set-cookie", cookie);
+    responseHeaders.append("set-cookie", rewriteSetCookieDomain(cookie));
   }
 }
 

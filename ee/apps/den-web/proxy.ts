@@ -29,7 +29,13 @@ function isPublicPath(pathname: string): boolean {
 }
 
 function hasAuthToken(request: NextRequest): boolean {
-  // Check for better-auth session cookie
+  // Check for better-auth session cookie (with __Secure- prefix for HTTPS)
+  const secureSessionCookie = request.cookies.get("__Secure-better-auth.session_token");
+  if (secureSessionCookie?.value) {
+    return true;
+  }
+
+  // Check for better-auth session cookie (without prefix for HTTP/development)
   const sessionCookie = request.cookies.get("better-auth.session_token");
   if (sessionCookie?.value) {
     return true;
