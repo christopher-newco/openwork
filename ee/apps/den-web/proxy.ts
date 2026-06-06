@@ -30,13 +30,21 @@ function isPublicPath(pathname: string): boolean {
 }
 
 function hasAuthToken(request: NextRequest): boolean {
+  // Check for den.session cookie (current cookie name)
+  const denSessionCookie = request.cookies.get("den.session");
+  if (denSessionCookie?.value) {
+    return true;
+  }
+
   // Check for better-auth session cookie (with __Secure- prefix for HTTPS)
+  // Legacy support for old cookie names
   const secureSessionCookie = request.cookies.get("__Secure-better-auth.session_token");
   if (secureSessionCookie?.value) {
     return true;
   }
 
   // Check for better-auth session cookie (without prefix for HTTP/development)
+  // Legacy support for old cookie names
   const sessionCookie = request.cookies.get("better-auth.session_token");
   if (sessionCookie?.value) {
     return true;

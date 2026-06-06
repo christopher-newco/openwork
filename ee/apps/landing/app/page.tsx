@@ -1,4 +1,5 @@
 import { LandingHome } from "../components/landing-home";
+import { SoapboxSignIn } from "../components/soapbox-signin";
 import { getGithubData } from "../lib/github";
 import { headers } from "next/headers";
 import { StructuredData } from "../components/structured-data";
@@ -36,7 +37,19 @@ const softwareApplicationSchema = {
   }
 };
 
+// Detect if this is the Soapbox deployment (admin.soapbox.build)
+const isSoapboxDeployment = () => {
+  return process.env.NEXT_PUBLIC_SOAPBOX_MODE === "true" ||
+         process.env.VERCEL_URL?.includes("soapbox");
+};
+
 export default async function Home() {
+  // If this is Soapbox deployment, show the simplified sign-in page
+  if (isSoapboxDeployment()) {
+    return <SoapboxSignIn loginUrl="https://app.openworklabs.com" />;
+  }
+
+  // Otherwise, show the full OpenWork landing page
   const github = await getGithubData();
   const cal = process.env.NEXT_PUBLIC_CAL_URL || "/enterprise#book";
   const userAgent = headers().get("user-agent")?.toLowerCase() || "";

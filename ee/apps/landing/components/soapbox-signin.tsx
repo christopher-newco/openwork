@@ -3,22 +3,21 @@ import { ArrowRight } from "lucide-react";
 import { useState } from "react";
 
 type Props = {
-  stars: string;
-  downloadHref: string;
-  callHref: string;
-  isMobileVisitor: boolean;
+  loginUrl?: string;
 };
 
-const CLOUD_LOGIN_URL = "https://app.openworklabs.com";
-
-export function LandingHome(props: Props) {
+/**
+ * Soapbox-branded sign-in page
+ * Isolated from OpenWork landing to avoid merge conflicts
+ */
+export function SoapboxSignIn({ loginUrl = "https://app.openworklabs.com" }: Props) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    // Redirect to the cloud login
-    window.location.href = CLOUD_LOGIN_URL;
+    // Redirect to the cloud login (login mode, not sign-up)
+    window.location.href = loginUrl;
   };
 
   return (
