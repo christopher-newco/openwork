@@ -93,7 +93,7 @@ export function ConnectScreen() {
     const connect = async () => {
       try {
         // Generate token if needed
-        let tokens = activeWorker;
+        let tokens: typeof worker | null = activeWorker;
         if (!activeWorker?.clientToken && !activeWorker?.ownerToken) {
           setStatus("Generating access token...");
           const newTokens = await generateWorkerToken();
@@ -102,8 +102,9 @@ export function ConnectScreen() {
             setStatus("Token generation failed");
             return;
           }
+          // Use worker as the base and merge in the new tokens
           tokens = {
-            ...activeWorker,
+            ...worker,
             ...newTokens,
           };
         }
