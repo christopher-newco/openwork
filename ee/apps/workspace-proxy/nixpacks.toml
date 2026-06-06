@@ -5,12 +5,14 @@ nixPkgs = ["nodejs_20"]
 cmds = ["npm install"]
 
 [phases.build]
-cmds = ["npm run build"]
+# Skip Next.js build - we don't need it for the proxy
+cmds = []
 
 [start]
-cmd = "npm start"
+# Run our custom proxy server, not Next.js static serve
+cmd = "NODE_ENV=production node server.mjs"
 
 [variables]
 NODE_ENV = "production"
-DEN_API_BASE = "https://api.openworklabs.com"
+DEN_API_BASE = "https://api.admin.soapbox.build"
 DEN_AUTH_ORIGIN = "https://admin.soapbox.build"

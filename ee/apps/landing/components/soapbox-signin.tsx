@@ -10,7 +10,9 @@ type Props = {
  * Soapbox-branded sign-in page
  * Isolated from OpenWork landing to avoid merge conflicts
  */
-export function SoapboxSignIn({ loginUrl = "https://app.openworklabs.com" }: Props) {
+export function SoapboxSignIn({
+  loginUrl = process.env.NEXT_PUBLIC_SOAPBOX_LOGIN_URL || "https://app.openworklabs.com"
+}: Props) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
