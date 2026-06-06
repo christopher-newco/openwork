@@ -71,6 +71,16 @@ export function AuthScreen() {
       return;
     }
 
+    // Check if this is a redirect from app.soapbox.build for workspace access
+    const searchParams = typeof window === "undefined" ? null : new URLSearchParams(window.location.search);
+    const redirectTo = searchParams?.get("redirect_to");
+    if (redirectTo === "workspace") {
+      routingRef.current = true;
+      // Redirect to /workspace which will create handoff grant and redirect to app
+      router.replace("/workspace");
+      return;
+    }
+
     routingRef.current = true;
     void resolveUserLandingRoute()
       .then((target) => {
