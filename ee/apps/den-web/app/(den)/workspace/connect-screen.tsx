@@ -93,7 +93,7 @@ export function ConnectScreen() {
     const connect = async () => {
       try {
         // Generate token if needed
-        let tokens: typeof worker | null = activeWorker;
+        let tokenData = activeWorker;
         if (!activeWorker?.clientToken && !activeWorker?.ownerToken) {
           setStatus("Generating access token...");
           const newTokens = await generateWorkerToken();
@@ -103,15 +103,15 @@ export function ConnectScreen() {
             return;
           }
           // Use worker as the base and merge in the new tokens
-          tokens = {
+          tokenData = {
             ...worker,
             ...newTokens,
-          };
+          } as typeof activeWorker;
         }
 
         // Build connect URL
-        const openworkUrl = tokens?.openworkUrl || worker.instanceUrl;
-        const accessToken = tokens?.clientToken || tokens?.ownerToken || null;
+        const openworkUrl = tokenData?.openworkUrl || worker.instanceUrl;
+        const accessToken = tokenData?.clientToken || tokenData?.ownerToken || null;
 
         console.log("[connect-screen] Building URL with:", {
           appConnectBaseUrl: OPENWORK_APP_CONNECT_BASE_URL,
