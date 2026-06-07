@@ -84,14 +84,25 @@ app.use("*", async (c, next) => {
   console.log('[Cookie Fix] Found', cookies.length, 'Set-Cookie headers')
 
   // Fix domain in each cookie and re-add
-  for (const cookie of cookies) {
+  for (let i = 0; i < cookies.length; i++) {
+    const cookie = cookies[i]
+    console.log(`[Cookie Fix] Cookie ${i + 1}:`, cookie.substring(0, 200))
+
     if (cookie.includes('Domain=admin.soapbox.build')) {
+      // Replace existing domain
       const fixedCookie = cookie.replace(/Domain=admin\.soapbox\.build/g, 'Domain=.soapbox.build')
       newHeaders.append('set-cookie', fixedCookie)
       rewriteCount++
-      console.log('[Cookie Fix] Rewrote cookie:', cookie.substring(0, 50))
+      console.log('[Cookie Fix] Replaced domain in cookie')
+    } else if (cookie.includes('__Secure-den.') && !cookie.includes('Domain=')) {
+      // Add domain if it's missing from our session cookies
+      const fixedCookie = cookie + '; Domain=.soapbox.build'
+      newHeaders.append('set-cookie', fixedCookie)
+      rewriteCount++
+      console.log('[Cookie Fix] Added Domain=.soapbox.build to cookie')
     } else {
       newHeaders.append('set-cookie', cookie)
+      console.log('[Cookie Fix] Cookie unchanged')
     }
   }
 
