@@ -279,7 +279,7 @@ async function provisionWorkerOnRender(
       { key: "DEN_WORKER_ID", value: input.workerId },
     ],
     serviceDetails: {
-      runtime: "node",
+      env: "node",
       plan: env.render.workerPlan,
       region: env.render.workerRegion,
       healthCheckPath: "/health",

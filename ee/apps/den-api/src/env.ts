@@ -268,7 +268,7 @@ export const env = {
     workerBranch: parsed.RENDER_WORKER_BRANCH ?? "dev",
     workerRootDir:
       parsed.RENDER_WORKER_ROOT_DIR ?? "ee/apps/den-worker-runtime",
-    workerPlan: parsed.RENDER_WORKER_PLAN ?? "standard",
+    workerPlan: parsed.RENDER_WORKER_PLAN ?? "starter",
     workerRegion: parsed.RENDER_WORKER_REGION ?? "oregon",
     workerOpenworkVersion: parsed.RENDER_WORKER_OPENWORK_VERSION,
     workerNamePrefix: parsed.RENDER_WORKER_NAME_PREFIX ?? "den-worker",
