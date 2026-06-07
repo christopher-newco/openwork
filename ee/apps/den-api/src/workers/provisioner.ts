@@ -276,7 +276,7 @@ async function provisionWorkerOnRender(
   const dockerCommand = [
     "/bin/sh",
     "-c",
-    "set -x && mkdir -p /tmp/workspace && exec openwork serve --workspace /tmp/workspace --remote-access --openwork-port ${PORT:-10000} --opencode-host 127.0.0.1 --opencode-port 4096 --connect-host 127.0.0.1 --cors '*' --approval manual --no-opencode-router --verbose",
+    "set -x && mkdir -p /tmp/workspace && exec openwork serve --workspace /tmp/workspace --remote-access --openwork-port ${PORT:-10000} --openwork-token \"$OPENWORK_TOKEN\" --openwork-host-token \"$OPENWORK_HOST_TOKEN\" --opencode-host 127.0.0.1 --opencode-port 4096 --connect-host 127.0.0.1 --cors '*' --approval manual --no-opencode-router --verbose",
   ]
 
   const payload = {
@@ -334,7 +334,7 @@ async function provisionWorkerOnRender(
       const updatedDockerCommand = [
         "/bin/sh",
         "-c",
-        "set -x && mkdir -p /workspace && exec openwork serve --workspace /workspace --remote-access --openwork-port ${PORT:-10000} --opencode-host 127.0.0.1 --opencode-port 4096 --connect-host 127.0.0.1 --cors '*' --approval manual --no-opencode-router --verbose",
+        "set -x && mkdir -p /workspace && exec openwork serve --workspace /workspace --remote-access --openwork-port ${PORT:-10000} --openwork-token \"$OPENWORK_TOKEN\" --openwork-host-token \"$OPENWORK_HOST_TOKEN\" --opencode-host 127.0.0.1 --opencode-port 4096 --connect-host 127.0.0.1 --cors '*' --approval manual --no-opencode-router --verbose",
       ]
 
       await renderRequest(`/services/${serviceId}`, {
