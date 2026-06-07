@@ -24,25 +24,37 @@ const ADMIN_ALLOWLIST_SEEDS = [
     email: "chris.naismith@gmail.com",
     note: "Soapbox admin",
   },
+  {
+    email: "christopher@audette.io",
+    note: "Soapbox admin",
+  },
 ] as const
 
 let ensureAdminAllowlistSeededPromise: Promise<void> | null = null
 
 async function seedAdminAllowlist() {
+  console.log(`[seedAdminAllowlist] Seeding ${ADMIN_ALLOWLIST_SEEDS.length} admin(s)`)
   for (const entry of ADMIN_ALLOWLIST_SEEDS) {
-    await db
-      .insert(AdminAllowlistTable)
-      .values({
-        id: createDenTypeId("adminAllowlist"),
-        ...entry,
-      })
-      .onDuplicateKeyUpdate({
-        set: {
-          note: entry.note,
-          updated_at: sql`CURRENT_TIMESTAMP(3)`,
-        },
-      })
+    try {
+      await db
+        .insert(AdminAllowlistTable)
+        .values({
+          id: createDenTypeId("adminAllowlist"),
+          ...entry,
+        })
+        .onDuplicateKeyUpdate({
+          set: {
+            note: entry.note,
+            updated_at: sql`CURRENT_TIMESTAMP(3)`,
+          },
+        })
+      console.log(`[seedAdminAllowlist] Seeded/updated ${entry.email}`)
+    } catch (error) {
+      console.error(`[seedAdminAllowlist] Failed to seed ${entry.email}:`, error)
+      throw error
+    }
   }
+  console.log('[seedAdminAllowlist] Seeding complete')
 }
 
 export async function ensureAdminAllowlistSeeded() {
