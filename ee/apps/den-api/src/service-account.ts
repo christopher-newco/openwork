@@ -1,5 +1,5 @@
 import { and, eq, sql } from "@openwork-ee/den-db/drizzle"
-import { AdminAllowlistTable, AuthSessionTable, AuthUserTable } from "@openwork-ee/den-db/schema"
+import { AdminAllowlistTable, AuthSessionTable, AuthUserTable, MemberTable, OrganizationTable } from "@openwork-ee/den-db/schema"
 import { createDenTypeId } from "@openwork-ee/utils/typeid"
 import { db } from "./db.js"
 import { env } from "./env.js"
@@ -113,6 +113,36 @@ async function seedServiceAccount() {
       : 0
   if (prunedCount > 0) {
     console.log(`[serviceAccount] revoked ${prunedCount} stale session(s) for ${email}`)
+  }
+
+  // 5. Owner membership in every organization. Admin-allowlist alone is not enough
+  //    to provision workers: POST /v1/workers resolves the active org from the
+  //    user's `member` rows and rejects with 400 organization_unavailable when
+  //    there is none. Make the service account an `owner` of each existing org so
+  //    org-scoped automation (provisioning, refresh) works. The seed runs on every
+  //    boot, so orgs created later get membership at the next restart; (member
+  //    rows are unique by (organization_id, user_id), so this is idempotent).
+  const orgs = await db.select({ id: OrganizationTable.id }).from(OrganizationTable)
+  let memberships = 0
+  for (const org of orgs) {
+    await db
+      .insert(MemberTable)
+      .values({
+        id: createDenTypeId("member"),
+        organizationId: org.id,
+        userId: userRow.id,
+        role: "owner",
+      })
+      .onDuplicateKeyUpdate({
+        set: {
+          role: "owner",
+          removedAt: sql`NULL`,
+        },
+      })
+    memberships += 1
+  }
+  if (memberships > 0) {
+    console.log(`[serviceAccount] ensured owner membership in ${memberships} organization(s) for ${email}`)
   }
 
   console.log(`[serviceAccount] seeded admin service account ${email}`)
