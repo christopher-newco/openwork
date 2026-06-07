@@ -78,10 +78,11 @@ async function getWorkspaceConfig(sessionToken, cookieName = 'den.session') {
     }
 
     const tokensData = await tokensResponse.json();
-    const instanceUrl = tokensData?.connect?.openworkUrl || tokensData?.worker?.instance?.url;
+    // Prefer Daytona internal URL for proxy (avoids proxy loop), fallback to public URL
+    const instanceUrl = tokensData?.daytona?.internalUrl || tokensData?.connect?.openworkUrl || tokensData?.worker?.instance?.url;
     const clientToken = tokensData?.tokens?.client;
 
-    console.log(`[getWorkspaceConfig] Instance URL: ${instanceUrl}, has token: ${!!clientToken}`);
+    console.log(`[getWorkspaceConfig] Instance URL: ${instanceUrl}, has token: ${!!clientToken}, isDaytona: ${!!tokensData?.daytona?.internalUrl}`);
 
     if (!instanceUrl || !clientToken) {
       console.error('[getWorkspaceConfig] Missing instanceUrl or clientToken');
