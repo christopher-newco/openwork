@@ -267,11 +267,16 @@ async function provisionWorkerOnRender(
   // Override the default CMD to:
   // 1. Use PORT env var (Render assigns this dynamically, typically 10000)
   // 2. Start with /tmp/workspace initially (before disk is attached)
-  // 3. Add retry logic for resilience
+  //
+  // The openwork-server is published on 0.0.0.0 ONLY via --remote-access (see
+  // packaging/docker/README.md and the Dockerfile CMD) — passing --openwork-host
+  // 0.0.0.0 alone leaves it bound to localhost, so Render's port scan finds no
+  // open port on 0.0.0.0 and the deploy times out. Mirror the documented launch
+  // path (also used by the post-disk update below and the dev provisioner).
   const dockerCommand = [
     "/bin/sh",
     "-c",
-    "set -ex && mkdir -p /tmp/workspace && openwork serve --workspace /tmp/workspace --openwork-port ${PORT:-10000} --openwork-host 0.0.0.0 --verbose 2>&1 | tee /tmp/openwork.log || (cat /tmp/openwork.log; exit 1)",
+    "set -x && mkdir -p /tmp/workspace && exec openwork serve --workspace /tmp/workspace --remote-access --openwork-port ${PORT:-10000} --opencode-host 127.0.0.1 --opencode-port 4096 --connect-host 0.0.0.0 --cors '*' --approval manual --allow-external --opencode-source external --no-opencode-router --verbose",
   ]
 
   const payload = {
