@@ -5,7 +5,7 @@ import { describeRoute } from "hono-openapi"
 import { z } from "zod"
 import { getCloudWorkerAdminBillingStatus } from "../../billing/polar.js"
 import { db } from "../../db.js"
-import { queryValidator, requireAdminMiddleware, requireUserMiddleware } from "../../middleware/index.js"
+import { queryValidator, requireAdminMiddleware, requireUserMiddleware, resolveUserOrganizationsMiddleware } from "../../middleware/index.js"
 import { denTypeIdSchema, invalidRequestSchema, jsonResponse, unauthorizedSchema } from "../../openapi.js"
 import type { AuthContextVariables } from "../../session.js"
 
@@ -98,6 +98,29 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, mapper: (item
 }
 
 export function registerAdminRoutes<T extends { Variables: AuthContextVariables }>(app: Hono<T>) {
+  app.get(
+    "/v1/admin/list-orgs",
+    describeRoute({
+      tags: ["Admin"],
+      summary: "List all organizations",
+      description: "Lists all organizations in the database for debugging.",
+      responses: {
+        200: jsonResponse("Organizations listed.", z.object({ orgs: z.array(z.any()) })),
+        401: jsonResponse("Must be authenticated as admin.", unauthorizedSchema),
+      },
+    }),
+    requireAdminMiddleware,
+    async (c) => {
+      const { OrganizationTable } = await import("@openwork-ee/den-db/schema")
+      const orgs = await db.select().from(OrganizationTable)
+      console.log(`[list-orgs] Found ${orgs.length} organization(s)`)
+      for (const org of orgs) {
+        console.log(`  - ${org.name} (slug: ${org.slug}, id: ${org.id})`)
+      }
+      return c.json({ orgs })
+    },
+  )
+
   app.post(
     "/v1/admin/delete-all-workers",
     describeRoute({
@@ -419,17 +442,24 @@ export function registerAdminRoutes<T extends { Variables: AuthContextVariables 
 
       console.log("=== Recreating Worker with Docker Deployment ===")
 
-      // Find Soapbox org
-      console.log("1. Finding Soapbox organization...")
+      // Get user's active organization
+      const activeOrgId = c.get("activeOrganizationId")
+      console.log("1. Looking up organization...")
+      console.log(`   Active org ID from context: ${activeOrgId}`)
+
+      if (!activeOrgId) {
+        return c.json({ error: "No active organization" }, 400)
+      }
+
       const orgs = await db
         .select()
         .from(OrganizationTable)
-        .where(eq(OrganizationTable.slug, "soapbox"))
+        .where(eq(OrganizationTable.id, activeOrgId))
         .limit(1)
 
       const org = orgs[0]
       if (!org) {
-        return c.json({ error: "Soapbox org not found" }, 404)
+        return c.json({ error: "Organization not found" }, 404)
       }
       console.log(`   ✓ Found: ${org.name} (${org.id})`)
 
@@ -539,13 +569,14 @@ export function registerAdminRoutes<T extends { Variables: AuthContextVariables 
     describeRoute({
       tags: ["Admin"],
       summary: "Fix Soapbox worker (GET)",
-      description: "Deletes broken workers and provisions a new Docker-based Render worker for the Soapbox organization with 40GB persistent disk.",
+      description: "Deletes broken workers and provisions a new Docker-based Render worker for your active organization with 40GB persistent disk.",
       responses: {
         200: jsonResponse("Worker provisioned successfully.", z.object({ message: z.string(), workerId: z.string() })),
         401: jsonResponse("The caller must be an authenticated admin.", unauthorizedSchema),
       },
     }),
     requireAdminMiddleware,
+    resolveUserOrganizationsMiddleware,
     fixSoapboxWorkerHandler,
   )
 
@@ -554,13 +585,14 @@ export function registerAdminRoutes<T extends { Variables: AuthContextVariables 
     describeRoute({
       tags: ["Admin"],
       summary: "Fix Soapbox worker (POST)",
-      description: "Deletes broken workers and provisions a new Docker-based Render worker for the Soapbox organization with 40GB persistent disk.",
+      description: "Deletes broken workers and provisions a new Docker-based Render worker for your active organization with 40GB persistent disk.",
       responses: {
         200: jsonResponse("Worker provisioned successfully.", z.object({ message: z.string(), workerId: z.string() })),
         401: jsonResponse("The caller must be an authenticated admin.", unauthorizedSchema),
       },
     }),
     requireAdminMiddleware,
+    resolveUserOrganizationsMiddleware,
     fixSoapboxWorkerHandler,
   )
 }
