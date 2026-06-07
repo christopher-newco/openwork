@@ -1,4 +1,4 @@
-import { eq, sql } from "@openwork-ee/den-db/drizzle"
+import { and, eq, sql } from "@openwork-ee/den-db/drizzle"
 import { AdminAllowlistTable, AuthSessionTable, AuthUserTable } from "@openwork-ee/den-db/schema"
 import { createDenTypeId } from "@openwork-ee/utils/typeid"
 import { db } from "./db.js"
@@ -97,6 +97,23 @@ async function seedServiceAccount() {
         updatedAt: sql`CURRENT_TIMESTAMP(3)`,
       },
     })
+
+  // 4. Revoke any *other* sessions for this user. The bearer credential lives in
+  //    env; rotating it means the old token must stop working. Because the seed
+  //    only upserts the current token's row, a previously-seeded token would
+  //    otherwise keep authenticating. Delete every session for the service
+  //    account except the one matching the configured token.
+  const pruned = await db
+    .delete(AuthSessionTable)
+    .where(and(eq(AuthSessionTable.userId, userRow.id), sql`${AuthSessionTable.token} <> ${token}`))
+
+  const prunedCount =
+    typeof (pruned as { rowsAffected?: number })?.rowsAffected === "number"
+      ? (pruned as { rowsAffected: number }).rowsAffected
+      : 0
+  if (prunedCount > 0) {
+    console.log(`[serviceAccount] revoked ${prunedCount} stale session(s) for ${email}`)
+  }
 
   console.log(`[serviceAccount] seeded admin service account ${email}`)
 }
