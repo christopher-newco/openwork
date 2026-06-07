@@ -75,8 +75,25 @@ export function SoapboxAuthScreen() {
           </p>
         </div>
 
-        {/* Auth panel with default to sign-in mode */}
-        <AuthPanel initialMode="sign-in" />
+        {/* Auth panel - simplified for Soapbox */}
+        <AuthPanel
+          initialMode="sign-in"
+          eyebrow=""
+          signInContent={{
+            title: "Soapbox.",
+            copy: "Build your platform.",
+            submitLabel: "Sign in",
+            togglePrompt: "Need an account?",
+            toggleActionLabel: "Create one",
+          }}
+          signUpContent={{
+            title: "Soapbox.",
+            copy: "Build your platform.",
+            submitLabel: "Create account",
+            togglePrompt: "Have an account?",
+            toggleActionLabel: "Sign in",
+          }}
+        />
       </div>
     </section>
   );
