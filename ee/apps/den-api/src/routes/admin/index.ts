@@ -1,13 +1,19 @@
 import { asc, desc, eq, isNotNull, sql } from "@openwork-ee/den-db/drizzle"
-import { AuthAccountTable, AuthSessionTable, AuthUserTable, WorkerTable, AdminAllowlistTable } from "@openwork-ee/den-db/schema"
+import { AuthAccountTable, AuthSessionTable, AuthUserTable, WorkerTable, WorkerInstanceTable, AdminAllowlistTable } from "@openwork-ee/den-db/schema"
 import type { Hono } from "hono"
 import { describeRoute } from "hono-openapi"
 import { z } from "zod"
 import { getCloudWorkerAdminBillingStatus } from "../../billing/polar.js"
 import { db } from "../../db.js"
-import { queryValidator, requireAdminMiddleware } from "../../middleware/index.js"
-import { denTypeIdSchema, invalidRequestSchema, jsonResponse, unauthorizedSchema } from "../../openapi.js"
+import { paramValidator, queryValidator, requireAdminMiddleware } from "../../middleware/index.js"
+import { denTypeIdSchema, invalidRequestSchema, jsonResponse, notFoundSchema, unauthorizedSchema } from "../../openapi.js"
 import type { AuthContextVariables } from "../../session.js"
+import {
+  findRenderServiceForWorker,
+  refreshWorkerOnRender,
+  renderDashboardUrl,
+} from "../../workers/provisioner.js"
+import { parseWorkerIdParam, workerIdParamSchema, type WorkerId } from "../workers/shared.js"
 
 type UserId = typeof AuthUserTable.$inferSelect.id
 
@@ -26,6 +32,18 @@ const adminOverviewResponseSchema = z.object({
   users: z.array(z.object({}).passthrough()),
   generatedAt: z.string().datetime(),
 }).meta({ ref: "AdminOverviewResponse" })
+
+const workerRefreshResponseSchema = z.object({
+  id: denTypeIdSchema("worker"),
+  status: z.literal("provisioning"),
+  serviceId: z.string(),
+  renderDashboardUrl: z.string(),
+  message: z.string(),
+}).meta({ ref: "AdminWorkerRefreshResponse" })
+
+const renderDashboardUrlResponseSchema = z.object({
+  url: z.string(),
+}).meta({ ref: "AdminRenderDashboardUrlResponse" })
 
 function normalizeEmail(value: string | null | undefined) {
   return value?.trim().toLowerCase() ?? ""
@@ -97,7 +115,106 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, mapper: (item
   return results
 }
 
+async function latestInstanceUrlForWorker(workerId: WorkerId) {
+  const [instance] = await db
+    .select({ url: WorkerInstanceTable.url })
+    .from(WorkerInstanceTable)
+    .where(eq(WorkerInstanceTable.worker_id, workerId))
+    .orderBy(desc(WorkerInstanceTable.created_at))
+    .limit(1)
+  return instance?.url ?? null
+}
+
 export function registerAdminRoutes<T extends { Variables: AuthContextVariables }>(app: Hono<T>) {
+  app.post(
+    "/v1/admin/workers/:id/refresh",
+    describeRoute({
+      tags: ["Admin"],
+      summary: "Refresh (redeploy) a worker",
+      description:
+        "Triggers a Render redeploy of the worker, preserving its persistent disk, env vars, and tokens. Picks up the latest worker build without losing user data.",
+      responses: {
+        200: jsonResponse("Worker redeploy triggered.", workerRefreshResponseSchema),
+        401: jsonResponse("The caller must be an authenticated admin.", unauthorizedSchema),
+        404: jsonResponse("Worker not found or has no Render service.", notFoundSchema),
+      },
+    }),
+    requireAdminMiddleware,
+    paramValidator(workerIdParamSchema),
+    async (c) => {
+      const params = c.req.valid("param")
+
+      let workerId: WorkerId
+      try {
+        workerId = parseWorkerIdParam(params.id)
+      } catch {
+        return c.json({ error: "worker_not_found" }, 404)
+      }
+
+      const [worker] = await db
+        .select({ id: WorkerTable.id })
+        .from(WorkerTable)
+        .where(eq(WorkerTable.id, workerId))
+        .limit(1)
+
+      if (!worker) {
+        return c.json({ error: "worker_not_found" }, 404)
+      }
+
+      const instanceUrl = await latestInstanceUrlForWorker(workerId)
+      const { serviceId } = await refreshWorkerOnRender({ workerId, instanceUrl })
+
+      await db
+        .update(WorkerTable)
+        .set({ status: "provisioning" })
+        .where(eq(WorkerTable.id, workerId))
+
+      return c.json({
+        id: workerId,
+        status: "provisioning" as const,
+        serviceId,
+        renderDashboardUrl: renderDashboardUrl(serviceId),
+        message: "Worker redeploy triggered; disk preserved.",
+      })
+    },
+  )
+
+  app.get(
+    "/v1/admin/workers/:id/render-dashboard-url",
+    describeRoute({
+      tags: ["Admin"],
+      summary: "Get the Render dashboard URL for a worker",
+      description:
+        "Returns a direct link to the worker's Render service dashboard for viewing logs, env vars, and disk management.",
+      responses: {
+        200: jsonResponse("Render dashboard URL returned.", renderDashboardUrlResponseSchema),
+        401: jsonResponse("The caller must be an authenticated admin.", unauthorizedSchema),
+        404: jsonResponse("Worker has no Render service.", notFoundSchema),
+      },
+    }),
+    requireAdminMiddleware,
+    paramValidator(workerIdParamSchema),
+    async (c) => {
+      const params = c.req.valid("param")
+
+      let workerId: WorkerId
+      try {
+        workerId = parseWorkerIdParam(params.id)
+      } catch {
+        return c.json({ error: "worker_not_found" }, 404)
+      }
+
+      const instanceUrl = await latestInstanceUrlForWorker(workerId)
+      const service = await findRenderServiceForWorker(workerId, instanceUrl)
+
+      if (!service) {
+        return c.json({ error: "render_service_not_found" }, 404)
+      }
+
+      return c.json({ url: renderDashboardUrl(service.id) })
+    },
+  )
+
   app.get(
     "/v1/admin/overview",
     describeRoute({

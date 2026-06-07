@@ -48,6 +48,8 @@ const EnvSchema = z.object({
   RENDER_WORKER_REGION: z.string().optional(),
   RENDER_WORKER_OPENWORK_VERSION: z.string().optional(),
   RENDER_WORKER_NAME_PREFIX: z.string().optional(),
+  RENDER_WORKER_DISK_SIZE_GB: z.string().optional(),
+  RENDER_WORKER_DISK_MOUNT_PATH: z.string().optional(),
   RENDER_WORKER_PUBLIC_DOMAIN_SUFFIX: z.string().optional(),
   RENDER_CUSTOM_DOMAIN_READY_TIMEOUT_MS: z.string().optional(),
   RENDER_PROVISION_TIMEOUT_MS: z.string().optional(),
@@ -270,6 +272,11 @@ export const env = {
     workerRegion: parsed.RENDER_WORKER_REGION ?? "oregon",
     workerOpenworkVersion: parsed.RENDER_WORKER_OPENWORK_VERSION,
     workerNamePrefix: parsed.RENDER_WORKER_NAME_PREFIX ?? "den-worker",
+    // Persistent disk: defaults to a 40GB disk at /workspace so worker data
+    // survives restarts/refreshes. Set RENDER_WORKER_DISK_SIZE_GB=0 to opt out
+    // and fall back to the ephemeral /tmp/workspace behavior.
+    workerDiskSizeGB: Number(parsed.RENDER_WORKER_DISK_SIZE_GB ?? "40"),
+    workerDiskMountPath: parsed.RENDER_WORKER_DISK_MOUNT_PATH ?? "/workspace",
     workerPublicDomainSuffix: parsed.RENDER_WORKER_PUBLIC_DOMAIN_SUFFIX,
     customDomainReadyTimeoutMs: Number(
       parsed.RENDER_CUSTOM_DOMAIN_READY_TIMEOUT_MS ?? "240000",

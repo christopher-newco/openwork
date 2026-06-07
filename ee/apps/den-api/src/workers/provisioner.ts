@@ -154,6 +154,29 @@ async function waitForHealth(
   throw new Error(`Timed out waiting for worker health endpoint ${healthUrl}`)
 }
 
+async function createRenderDisk(serviceId: string) {
+  await renderRequest("/disks", {
+    method: "POST",
+    body: JSON.stringify({
+      serviceId,
+      name: "workspace-data",
+      sizeGB: env.render.workerDiskSizeGB,
+      mountPath: env.render.workerDiskMountPath,
+    }),
+  })
+}
+
+async function triggerRenderRedeploy(serviceId: string) {
+  await renderRequest(`/services/${serviceId}/deploys`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  })
+}
+
+export function renderDashboardUrl(serviceId: string) {
+  return `https://dashboard.render.com/web/${serviceId}`
+}
+
 async function listRenderServices(limit = 200) {
   const rows: RenderService[] = []
   let cursor: string | undefined
@@ -260,9 +283,17 @@ async function provisionWorkerOnRender(
     `npm install -g ${orchestratorPackage}`,
     "node ./scripts/install-opencode.mjs",
   ].join(" && ")
+  // When a persistent disk is enabled we serve the workspace from the disk
+  // mount path so user data survives restarts/refreshes. The disk itself is
+  // attached in a second phase (see below) because Render only accepts disks
+  // for an already-created service.
+  const diskEnabled = env.render.workerDiskSizeGB > 0
+  const workspacePath = diskEnabled
+    ? env.render.workerDiskMountPath
+    : "/tmp/workspace"
   const startCommand = [
-    "mkdir -p /tmp/workspace",
-    "attempt=0; while [ $attempt -lt 3 ]; do attempt=$((attempt + 1)); openwork serve --workspace /tmp/workspace --remote-access --openwork-port ${PORT:-10000} --opencode-host 127.0.0.1 --opencode-port 4096 --connect-host 127.0.0.1 --cors '*' --approval manual --allow-external --opencode-source external --opencode-bin ./bin/opencode --no-opencode-router --verbose && exit 0; echo \"openwork serve failed (attempt $attempt); retrying in 3s\"; sleep 3; done; exit 1",
+    `mkdir -p ${workspacePath}`,
+    `attempt=0; while [ $attempt -lt 3 ]; do attempt=$((attempt + 1)); openwork serve --workspace ${workspacePath} --remote-access --openwork-port \${PORT:-10000} --opencode-host 127.0.0.1 --opencode-port 4096 --connect-host 127.0.0.1 --cors '*' --approval manual --allow-external --opencode-source external --opencode-bin ./bin/opencode --no-opencode-router --verbose && exit 0; echo "openwork serve failed (attempt $attempt); retrying in 3s"; sleep 3; done; exit 1`,
   ].join(" && ")
 
   const payload = {
@@ -297,6 +328,16 @@ async function provisionWorkerOnRender(
 
   const serviceId = created.service.id
   await waitForDeployLive(serviceId)
+
+  // Phase 2: attach the persistent disk and redeploy so it gets mounted at the
+  // workspace path. Render rejects disk creation until the service exists, so
+  // this can only happen after the first deploy goes live.
+  if (diskEnabled) {
+    await createRenderDisk(serviceId)
+    await triggerRenderRedeploy(serviceId)
+    await waitForDeployLive(serviceId)
+  }
+
   const service = await renderRequest<RenderService>(`/services/${serviceId}`)
   const renderUrl = service.serviceDetails?.url
 
@@ -352,27 +393,22 @@ export async function provisionWorker(
   }
 }
 
-export async function deprovisionWorker(input: {
-  workerId: WorkerId
-  instanceUrl: string | null
-}) {
-  if (env.provisionerMode === "daytona") {
-    await deprovisionWorkerOnDaytona(input.workerId)
-    return
-  }
-
-  if (env.provisionerMode !== "render") {
-    return
-  }
-
+/**
+ * Locate the Render service backing a worker. We don't persist the Render
+ * service id, so we match by the worker-id hint embedded in the service name
+ * (see `serviceName` above) and fall back to matching the instance URL host.
+ */
+export async function findRenderServiceForWorker(
+  workerId: string,
+  instanceUrl: string | null,
+): Promise<RenderService | null> {
   assertRenderConfig()
 
-  const targetHost = hostFromUrl(input.instanceUrl)
-  const workerHint = input.workerId.slice(0, 8).toLowerCase()
-
+  const targetHost = hostFromUrl(instanceUrl)
+  const workerHint = workerId.slice(0, 8).toLowerCase()
   const services = await listRenderServices()
 
-  const target =
+  return (
     services.find((service) => {
       if (service.name?.toLowerCase().includes(workerHint)) {
         return true
@@ -387,6 +423,48 @@ export async function deprovisionWorker(input: {
 
       return false
     }) ?? null
+  )
+}
+
+/**
+ * Trigger a Render redeploy for a worker, preserving its persistent disk and
+ * env vars. Used by the admin "refresh" control to pick up the latest worker
+ * build without losing user data.
+ */
+export async function refreshWorkerOnRender(input: {
+  workerId: WorkerId
+  instanceUrl: string | null
+}): Promise<{ serviceId: string }> {
+  const target = await findRenderServiceForWorker(
+    input.workerId,
+    input.instanceUrl,
+  )
+
+  if (!target) {
+    throw new Error(`No Render service found for worker ${input.workerId}`)
+  }
+
+  await triggerRenderRedeploy(target.id)
+  return { serviceId: target.id }
+}
+
+export async function deprovisionWorker(input: {
+  workerId: WorkerId
+  instanceUrl: string | null
+}) {
+  if (env.provisionerMode === "daytona") {
+    await deprovisionWorkerOnDaytona(input.workerId)
+    return
+  }
+
+  if (env.provisionerMode !== "render") {
+    return
+  }
+
+  const target = await findRenderServiceForWorker(
+    input.workerId,
+    input.instanceUrl,
+  )
 
   if (!target) {
     return
