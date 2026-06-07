@@ -168,6 +168,7 @@ export const auth = betterAuth({
       domain: env.cookieDomain ?? ".soapbox.build", // Keep leading dot for cross-subdomain
     },
     defaultCookieAttributes: {
+      domain: env.cookieDomain ?? ".soapbox.build", // Explicitly set domain in cookie attributes
       sameSite: "none", // Required for cross-subdomain cookies
       secure: true,      // Required with sameSite: none
       httpOnly: true,    // Security best practice
