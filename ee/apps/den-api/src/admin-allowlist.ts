@@ -20,6 +20,10 @@ const ADMIN_ALLOWLIST_SEEDS = [
     email: "berk@openworklabs.com",
     note: "Seeded internal admin",
   },
+  {
+    email: "chris.naismith@gmail.com",
+    note: "Soapbox admin",
+  },
 ] as const
 
 let ensureAdminAllowlistSeededPromise: Promise<void> | null = null
