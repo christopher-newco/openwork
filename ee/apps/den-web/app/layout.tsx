@@ -16,28 +16,54 @@ const ibmPlexMono = IBM_Plex_Mono({
   weight: ["400", "500"]
 });
 
-export const metadata: Metadata = {
-  metadataBase: new URL("https://app.openworklabs.com"),
-  title: "OpenWork Cloud",
-  description:
-    "Share your OpenWork setup with your team, manage billing, and use OpenWork Cloud from app.openworklabs.com.",
-  openGraph: {
-    title: "OpenWork Cloud",
-    description:
-      "Share your OpenWork setup with your team and keep selected workflows available in OpenWork Cloud.",
-    images: ["/opengraph-image"]
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "OpenWork Cloud",
-    description:
-      "Share your OpenWork setup with your team and manage OpenWork Cloud from app.openworklabs.com.",
-    images: ["/opengraph-image"]
-  },
-  icons: {
-    icon: "/openwork-mark.svg"
-  }
-};
+// Dynamic metadata based on deployment mode
+const isSoapboxMode =
+  process.env.NEXT_PUBLIC_SOAPBOX_MODE === "true" ||
+  process.env.SOAPBOX_MODE === "true" ||
+  process.env.RAILWAY_STATIC_URL?.includes("soapbox");
+
+export const metadata: Metadata = isSoapboxMode
+  ? {
+      metadataBase: new URL("https://admin.soapbox.build"),
+      title: "Soapbox",
+      description: "Sign in to your workspace",
+      openGraph: {
+        title: "Soapbox",
+        description: "Sign in to your workspace",
+        images: ["/openwork-mark.svg"]
+      },
+      twitter: {
+        card: "summary_large_image",
+        title: "Soapbox",
+        description: "Sign in to your workspace",
+        images: ["/openwork-mark.svg"]
+      },
+      icons: {
+        icon: "/openwork-mark.svg"
+      }
+    }
+  : {
+      metadataBase: new URL("https://app.openworklabs.com"),
+      title: "OpenWork Cloud",
+      description:
+        "Share your OpenWork setup with your team, manage billing, and use OpenWork Cloud from app.openworklabs.com.",
+      openGraph: {
+        title: "OpenWork Cloud",
+        description:
+          "Share your OpenWork setup with your team and keep selected workflows available in OpenWork Cloud.",
+        images: ["/opengraph-image"]
+      },
+      twitter: {
+        card: "summary_large_image",
+        title: "OpenWork Cloud",
+        description:
+          "Share your OpenWork setup with your team and manage OpenWork Cloud from app.openworklabs.com.",
+        images: ["/opengraph-image"]
+      },
+      icons: {
+        icon: "/openwork-mark.svg"
+      }
+    };
 
 const defaultPosthogKey = "phc_4YnPTlDVYPjgwKvLuNxhbHjV5kadgvd7XLzVHWnCXAI";
 const defaultPosthogProxyPath = "/ow";
