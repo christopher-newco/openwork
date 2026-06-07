@@ -20,6 +20,8 @@ export const requireAdminMiddleware: MiddlewareHandler<{ Variables: AuthContextV
     return c.json({ error: "admin_email_required" }, 403) as never
   }
 
+  console.log(`[requireAdminMiddleware] Checking admin access for ${email}`)
+
   await ensureAdminAllowlistSeeded()
 
   const allowed = await db
@@ -28,7 +30,12 @@ export const requireAdminMiddleware: MiddlewareHandler<{ Variables: AuthContextV
     .where(eq(AdminAllowlistTable.email, email))
     .limit(1)
 
+  console.log(`[requireAdminMiddleware] Found ${allowed.length} matching admins`)
+
   if (allowed.length === 0) {
+    // Log all admins for debugging
+    const allAdmins = await db.select({ email: AdminAllowlistTable.email }).from(AdminAllowlistTable)
+    console.log(`[requireAdminMiddleware] All admins in allowlist:`, allAdmins.map(a => a.email))
     return c.json({ error: "forbidden" }, 403) as never
   }
 
