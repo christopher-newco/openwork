@@ -103,6 +103,11 @@ const EnvSchema = z.object({
   STRIPE_BILLING_SUCCESS_URL: z.string().optional(),
   STRIPE_BILLING_CANCEL_URL: z.string().optional(),
   COOKIE_DOMAIN: z.string().optional(),
+  // Headless admin service account: when set, a seeded admin user + long-lived
+  // session whose token equals this value is ensured at startup, enabling
+  // automation to authenticate via `Authorization: Bearer <token>`.
+  DEN_SERVICE_ACCOUNT_TOKEN: z.string().min(32).optional(),
+  DEN_SERVICE_ACCOUNT_EMAIL: z.string().optional(),
 }).superRefine((value, ctx) => {
   // Auto-detect database mode from URL if not explicitly set
   let inferredMode = value.DB_MODE
@@ -202,6 +207,10 @@ export const env = {
   betterAuthSecret: parsed.BETTER_AUTH_SECRET,
   betterAuthUrl: normalizeOrigin(parsed.BETTER_AUTH_URL),
   cookieDomain: optionalString(parsed.COOKIE_DOMAIN),
+  serviceAccount: {
+    token: optionalString(parsed.DEN_SERVICE_ACCOUNT_TOKEN),
+    email: optionalString(parsed.DEN_SERVICE_ACCOUNT_EMAIL),
+  },
   mcpResourceUrl: optionalString(parsed.DEN_MCP_RESOURCE_URL)
     ? normalizeOrigin(parsed.DEN_MCP_RESOURCE_URL!)
     : devMode
