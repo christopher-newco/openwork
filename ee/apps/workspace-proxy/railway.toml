@@ -1,9 +1,5 @@
 [build]
 builder = "nixpacks"
-nixpacksConfigPath = "nixpacks.toml"
-
-[build]
-builder = "nixpacks"
 
 [deploy]
 startCommand = "node server.mjs"
