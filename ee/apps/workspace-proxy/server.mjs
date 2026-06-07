@@ -121,10 +121,12 @@ app.prepare().then(() => {
 
       // Try multiple possible cookie names that Better Auth might use
       const possibleCookieNames = [
-        'den.session',           // Our intended name
-        '__Secure-den.session',  // With __Secure- prefix
-        '__Secure-session',      // Just session with prefix
-        'session',               // Just session
+        'den.session_token',         // Better Auth default with our prefix
+        '__Secure-den.session_token', // With __Secure- prefix (production)
+        'den.session',               // Legacy/simplified name
+        '__Secure-den.session',      // Legacy with __Secure-
+        '__Secure-session',          // Current wrong config
+        'session',                   // Fallback
       ];
 
       let sessionToken = null;
@@ -184,7 +186,7 @@ app.prepare().then(() => {
   server.on('upgrade', async (req, socket, head) => {
     try {
       // Try multiple possible cookie names
-      const possibleCookieNames = ['den.session', '__Secure-den.session', '__Secure-session', 'session'];
+      const possibleCookieNames = ['den.session_token', '__Secure-den.session_token', 'den.session', '__Secure-den.session', '__Secure-session', 'session'];
       let sessionToken = null;
       for (const name of possibleCookieNames) {
         const token = getCookieValue(req.headers.cookie, name);
