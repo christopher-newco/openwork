@@ -117,6 +117,7 @@ app.prepare().then(() => {
       console.log(`[proxy] Incoming ${req.method} ${req.url}`);
 
       // Extract session token from cookie
+      console.log(`[proxy] All cookies received:`, req.headers.cookie || 'none');
       const sessionToken = getCookieValue(req.headers.cookie, 'den.session');
       console.log(`[proxy] Session token: ${sessionToken ? 'present' : 'missing'}`);
 
