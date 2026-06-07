@@ -261,8 +261,8 @@ async function provisionWorkerOnRender(
     "node ./scripts/install-opencode.mjs",
   ].join(" && ")
   const startCommand = [
-    "mkdir -p /tmp/workspace",
-    "attempt=0; while [ $attempt -lt 3 ]; do attempt=$((attempt + 1)); openwork serve --workspace /tmp/workspace --remote-access --openwork-port ${PORT:-10000} --opencode-host 127.0.0.1 --opencode-port 4096 --connect-host 127.0.0.1 --cors '*' --approval manual --allow-external --opencode-source external --opencode-bin ./bin/opencode --no-opencode-router --verbose && exit 0; echo \"openwork serve failed (attempt $attempt); retrying in 3s\"; sleep 3; done; exit 1",
+    "mkdir -p /workspace",
+    "attempt=0; while [ $attempt -lt 3 ]; do attempt=$((attempt + 1)); openwork serve --workspace /workspace --remote-access --openwork-port ${PORT:-10000} --opencode-host 127.0.0.1 --opencode-port 4096 --connect-host 127.0.0.1 --cors '*' --approval manual --allow-external --opencode-source external --opencode-bin ./bin/opencode --no-opencode-router --verbose && exit 0; echo \"openwork serve failed (attempt $attempt); retrying in 3s\"; sleep 3; done; exit 1",
   ].join(" && ")
 
   const payload = {
@@ -297,6 +297,38 @@ async function provisionWorkerOnRender(
 
   const serviceId = created.service.id
   await waitForDeployLive(serviceId)
+
+  // Add persistent disk for workspace data
+  const diskSizeGB = Number(env.render.workerDiskSizeGB ?? "40")
+  if (diskSizeGB > 0) {
+    try {
+      console.log(`[provisioner] Adding ${diskSizeGB}GB persistent disk to ${serviceId}...`)
+      await renderRequest("/disks", {
+        method: "POST",
+        body: JSON.stringify({
+          serviceId,
+          name: "workspace-data",
+          sizeGB: diskSizeGB,
+          mountPath: "/workspace",
+        }),
+      })
+      console.log(`[provisioner] Persistent disk added, redeploying service...`)
+
+      // Trigger redeploy to attach the disk
+      await renderRequest(`/services/${serviceId}/deploys`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      })
+
+      // Wait for the redeploy to complete
+      await waitForDeployLive(serviceId)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown_error"
+      console.warn(`[provisioner] Failed to add persistent disk: ${message}`)
+      // Continue without disk - non-fatal
+    }
+  }
+
   const service = await renderRequest<RenderService>(`/services/${serviceId}`)
   const renderUrl = service.serviceDetails?.url
 

@@ -272,6 +272,7 @@ export const env = {
     workerRegion: parsed.RENDER_WORKER_REGION ?? "oregon",
     workerOpenworkVersion: parsed.RENDER_WORKER_OPENWORK_VERSION,
     workerNamePrefix: parsed.RENDER_WORKER_NAME_PREFIX ?? "den-worker",
+    workerDiskSizeGB: parsed.RENDER_WORKER_DISK_SIZE_GB ?? "40",
     workerPublicDomainSuffix: parsed.RENDER_WORKER_PUBLIC_DOMAIN_SUFFIX,
     customDomainReadyTimeoutMs: Number(
       parsed.RENDER_CUSTOM_DOMAIN_READY_TIMEOUT_MS ?? "240000",
