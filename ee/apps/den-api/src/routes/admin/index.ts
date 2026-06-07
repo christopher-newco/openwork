@@ -99,6 +99,51 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, mapper: (item
 
 export function registerAdminRoutes<T extends { Variables: AuthContextVariables }>(app: Hono<T>) {
   app.post(
+    "/v1/admin/delete-all-workers",
+    describeRoute({
+      tags: ["Admin"],
+      summary: "Delete all workers",
+      description: "Deletes all worker records from the database (including tokens and instances).",
+      responses: {
+        200: jsonResponse("Workers deleted.", z.object({ message: z.string(), deletedCount: z.number() })),
+        401: jsonResponse("Must be authenticated as admin.", unauthorizedSchema),
+      },
+    }),
+    requireAdminMiddleware,
+    async (c) => {
+      const { WorkerTokenTable, WorkerInstanceTable } = await import("@openwork-ee/den-db/schema")
+
+      console.log('=== Deleting all workers ===')
+      const workers = await db.select().from(WorkerTable)
+      console.log(`Found ${workers.length} worker(s)`)
+
+      for (const worker of workers) {
+        console.log(`Deleting worker: ${worker.name} (${worker.id})`)
+
+        // Delete tokens
+        await db.delete(WorkerTokenTable).where(eq(WorkerTokenTable.worker_id, worker.id))
+        console.log(`  - Deleted tokens`)
+
+        // Delete instances
+        await db.delete(WorkerInstanceTable).where(eq(WorkerInstanceTable.worker_id, worker.id))
+        console.log(`  - Deleted instances`)
+
+        // Delete worker
+        await db.delete(WorkerTable).where(eq(WorkerTable.id, worker.id))
+        console.log(`  ✓ Deleted worker ${worker.id}`)
+      }
+
+      const remaining = await db.select().from(WorkerTable)
+      console.log(`Remaining workers: ${remaining.length}`)
+
+      return c.json({
+        message: `Deleted ${workers.length} worker(s)`,
+        deletedCount: workers.length
+      })
+    },
+  )
+
+  app.post(
     "/v1/admin/grant-self-admin",
     describeRoute({
       tags: ["Admin"],
