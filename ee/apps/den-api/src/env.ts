@@ -48,6 +48,7 @@ const EnvSchema = z.object({
   RENDER_WORKER_REGION: z.string().optional(),
   RENDER_WORKER_OPENWORK_VERSION: z.string().optional(),
   RENDER_WORKER_NAME_PREFIX: z.string().optional(),
+  RENDER_WORKER_DISK_SIZE_GB: z.string().optional(),
   RENDER_WORKER_PUBLIC_DOMAIN_SUFFIX: z.string().optional(),
   RENDER_CUSTOM_DOMAIN_READY_TIMEOUT_MS: z.string().optional(),
   RENDER_PROVISION_TIMEOUT_MS: z.string().optional(),
