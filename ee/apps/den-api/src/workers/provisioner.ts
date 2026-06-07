@@ -250,8 +250,13 @@ async function provisionWorkerOnRender(
 ): Promise<ProvisionedInstance> {
   assertRenderConfig()
 
+  // Use the END of the worker id for the name suffix: TypeIDs share a long
+  // common prefix (e.g. every `wrk_01kt…` in this era), so workerId.slice(0, 8)
+  // collapses to the same slug for every worker and Render rejects the duplicate
+  // service name with a 500. The tail is the unique entropy.
+  const workerIdSuffix = input.workerId.replace(/^wrk_/, "").slice(-12)
   const serviceName = slug(
-    `${env.render.workerNamePrefix}-${input.name}-${input.workerId.slice(0, 8)}`,
+    `${env.render.workerNamePrefix}-${input.name}-${workerIdSuffix}`,
   ).slice(0, 62)
 
   // Docker deployment configuration
