@@ -62,6 +62,7 @@ async function getWorkspaceConfig(sessionToken, cookieName = 'den.session') {
 
     // Get worker tokens
     const tokensResponse = await fetch(`${DEN_API_BASE}/v1/workers/${workerId}/tokens`, {
+      method: 'POST',
       headers: {
         Cookie: `${cookieName}=${sessionToken}`,
         Accept: 'application/json',
