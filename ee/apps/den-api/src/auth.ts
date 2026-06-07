@@ -115,6 +115,10 @@ function hasMcpScope(scopes: readonly string[]) {
   return scopes.some((scope) => scope.startsWith("mcp:"));
 }
 
+// Log cookie domain configuration for debugging
+console.log('[Better Auth Config] Cookie domain:', env.cookieDomain);
+console.log('[Better Auth Config] Base URL:', env.betterAuthUrl);
+
 export const auth = betterAuth({
   baseURL: env.betterAuthUrl,
   secret: env.betterAuthSecret,

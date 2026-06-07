@@ -52,6 +52,31 @@ app.use("*", async (c, next) => {
 
   return requestLogger(c, next)
 })
+
+// Middleware to fix cookie domain for cross-subdomain sharing
+// Better Auth ignores explicit domain config, so we fix it here
+app.use("*", async (c, next) => {
+  await next()
+
+  const setCookieHeaders = c.res.headers.getSetCookie?.() || []
+  if (setCookieHeaders.length === 0) return
+
+  const fixedHeaders = setCookieHeaders.map(cookie => {
+    // Only fix cookies that are set to admin.soapbox.build
+    if (cookie.includes('Domain=admin.soapbox.build')) {
+      console.log('[Cookie Fix] Rewriting cookie domain from admin.soapbox.build to .soapbox.build')
+      return cookie.replace('Domain=admin.soapbox.build', 'Domain=.soapbox.build')
+    }
+    return cookie
+  })
+
+  // Clear existing Set-Cookie headers and set the fixed ones
+  c.res.headers.delete('Set-Cookie')
+  fixedHeaders.forEach(cookie => {
+    c.res.headers.append('Set-Cookie', cookie)
+  })
+})
+
 app.use("*", requestId({
   headerName: "",
   generator: () => createDenTypeId("request"),
