@@ -58,23 +58,53 @@ app.use("*", async (c, next) => {
 app.use("*", async (c, next) => {
   await next()
 
-  const setCookieHeaders = c.res.headers.getSetCookie?.() || []
-  if (setCookieHeaders.length === 0) return
+  // Clone the response to modify headers
+  const originalResponse = c.res
+  const newHeaders = new Headers(originalResponse.headers)
 
-  const fixedHeaders = setCookieHeaders.map(cookie => {
-    // Only fix cookies that are set to admin.soapbox.build
-    if (cookie.includes('Domain=admin.soapbox.build')) {
-      console.log('[Cookie Fix] Rewriting cookie domain from admin.soapbox.build to .soapbox.build')
-      return cookie.replace('Domain=admin.soapbox.build', 'Domain=.soapbox.build')
+  // Get all headers and find Set-Cookie headers
+  let hasSetCookie = false
+  let rewriteCount = 0
+
+  // Convert headers to array to check all values
+  const headers = Array.from(newHeaders.entries())
+
+  // Remove all Set-Cookie headers and collect them
+  const cookies: string[] = []
+  for (const [key, value] of headers) {
+    if (key.toLowerCase() === 'set-cookie') {
+      hasSetCookie = true
+      cookies.push(value)
+      newHeaders.delete('set-cookie')
     }
-    return cookie
-  })
+  }
 
-  // Clear existing Set-Cookie headers and set the fixed ones
-  c.res.headers.delete('Set-Cookie')
-  fixedHeaders.forEach(cookie => {
-    c.res.headers.append('Set-Cookie', cookie)
-  })
+  if (!hasSetCookie) return
+
+  console.log('[Cookie Fix] Found', cookies.length, 'Set-Cookie headers')
+
+  // Fix domain in each cookie and re-add
+  for (const cookie of cookies) {
+    if (cookie.includes('Domain=admin.soapbox.build')) {
+      const fixedCookie = cookie.replace(/Domain=admin\.soapbox\.build/g, 'Domain=.soapbox.build')
+      newHeaders.append('set-cookie', fixedCookie)
+      rewriteCount++
+      console.log('[Cookie Fix] Rewrote cookie:', cookie.substring(0, 50))
+    } else {
+      newHeaders.append('set-cookie', cookie)
+    }
+  }
+
+  if (rewriteCount > 0) {
+    console.log('[Cookie Fix] Rewrote', rewriteCount, 'cookies from admin.soapbox.build to .soapbox.build')
+
+    // Create new response with modified headers
+    c.res = new Response(originalResponse.body, {
+      status: originalResponse.status,
+      statusText: originalResponse.statusText,
+      headers: newHeaders,
+    })
+  }
 })
 
 app.use("*", requestId({
