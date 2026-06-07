@@ -487,7 +487,6 @@ export function registerAdminRoutes<T extends { Variables: AuthContextVariables 
         }, 500)
       }
     }
-  }
 
   app.get(
     "/v1/admin/fix-soapbox-worker",
