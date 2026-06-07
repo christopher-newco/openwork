@@ -160,11 +160,15 @@ export const auth = betterAuth({
     skipStateCookieCheck: true,
   },
   advanced: {
-    cookie: {
-      domain: env.cookieDomain,
-      name: "den.session", // Match the cookie name expected by workspace-proxy
-      secure: true, // Still require HTTPS
-      sameSite: "lax", // Allow cross-subdomain requests
+    cookiePrefix: "den",
+    cookies: {
+      session_token: {
+        name: "session", // Creates "den.session" cookie (prefix + name)
+      }
+    },
+    crossSubDomainCookies: {
+      enabled: true,
+      domain: env.cookieDomain?.replace(/^\./, "") ?? "soapbox.build", // Remove leading dot if present
     },
     ipAddress: {
       ipAddressHeaders: ["x-forwarded-for", "x-real-ip", "cf-connecting-ip"],
