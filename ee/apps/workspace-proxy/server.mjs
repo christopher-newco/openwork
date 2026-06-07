@@ -28,14 +28,14 @@ proxy.on('error', (err, req, res) => {
   }
 });
 
-async function getWorkspaceConfig(sessionToken) {
+async function getWorkspaceConfig(sessionToken, cookieName = 'den.session') {
   try {
     console.log(`[getWorkspaceConfig] Fetching workers from ${DEN_API_BASE}/v1/workers`);
 
-    // Get worker list
+    // Get worker list - use the same cookie name that was received
     const workersResponse = await fetch(`${DEN_API_BASE}/v1/workers`, {
       headers: {
-        Cookie: `den.session=${sessionToken}`,
+        Cookie: `${cookieName}=${sessionToken}`,
         Accept: 'application/json',
       },
     });
@@ -63,7 +63,7 @@ async function getWorkspaceConfig(sessionToken) {
     // Get worker tokens
     const tokensResponse = await fetch(`${DEN_API_BASE}/v1/workers/${workerId}/tokens`, {
       headers: {
-        Cookie: `den.session=${sessionToken}`,
+        Cookie: `${cookieName}=${sessionToken}`,
         Accept: 'application/json',
       },
     });
@@ -118,8 +118,27 @@ app.prepare().then(() => {
 
       // Extract session token from cookie
       console.log(`[proxy] All cookies received:`, req.headers.cookie || 'none');
-      const sessionToken = getCookieValue(req.headers.cookie, 'den.session');
-      console.log(`[proxy] Session token: ${sessionToken ? 'present' : 'missing'}`);
+
+      // Try multiple possible cookie names that Better Auth might use
+      const possibleCookieNames = [
+        'den.session',           // Our intended name
+        '__Secure-den.session',  // With __Secure- prefix
+        '__Secure-session',      // Just session with prefix
+        'session',               // Just session
+      ];
+
+      let sessionToken = null;
+      let cookieName = null;
+      for (const name of possibleCookieNames) {
+        const token = getCookieValue(req.headers.cookie, name);
+        if (token) {
+          sessionToken = token;
+          cookieName = name;
+          break;
+        }
+      }
+
+      console.log(`[proxy] Session token: ${sessionToken ? `present (from ${cookieName})` : 'missing'}`);
 
       if (!sessionToken) {
         console.log(`[proxy] No session, redirecting to ${DEN_AUTH_ORIGIN}`);
@@ -132,7 +151,7 @@ app.prepare().then(() => {
 
       // Get workspace configuration
       console.log(`[proxy] Fetching workspace config from ${DEN_API_BASE}`);
-      const config = await getWorkspaceConfig(sessionToken);
+      const config = await getWorkspaceConfig(sessionToken, cookieName);
       console.log(`[proxy] Workspace config: ${config ? `target=${config.target}` : 'null'}`);
 
       if (!config) {
@@ -164,7 +183,16 @@ app.prepare().then(() => {
   // Handle WebSocket upgrades
   server.on('upgrade', async (req, socket, head) => {
     try {
-      const sessionToken = getCookieValue(req.headers.cookie, 'den.session');
+      // Try multiple possible cookie names
+      const possibleCookieNames = ['den.session', '__Secure-den.session', '__Secure-session', 'session'];
+      let sessionToken = null;
+      for (const name of possibleCookieNames) {
+        const token = getCookieValue(req.headers.cookie, name);
+        if (token) {
+          sessionToken = token;
+          break;
+        }
+      }
 
       if (!sessionToken) {
         socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
