@@ -20,8 +20,11 @@ import { env } from "./env.js"
 const SERVICE_ACCOUNT_DEFAULT_EMAIL = "den-service-account@soapbox.build"
 const SERVICE_ACCOUNT_NAME = "Den Service Account"
 const SERVICE_ACCOUNT_NOTE = "Den headless admin service account"
-// ~100 years; effectively non-expiring so the bearer token stays valid.
-const SESSION_TTL_MS = 100 * 365 * 24 * 60 * 60 * 1000
+// Fixed far-future expiry. MySQL TIMESTAMP cannot exceed 2038-01-19 03:14:07 UTC
+// (the 32-bit epoch limit); a larger value fails with errno 1292 "Incorrect
+// datetime value". 2038-01-01 stays safely under that ceiling. The seed re-runs
+// on every boot, so refresh this (or migrate the column to DATETIME) before then.
+const SESSION_EXPIRES_AT = new Date("2038-01-01T00:00:00.000Z")
 
 let ensureServiceAccountSeededPromise: Promise<void> | null = null
 
@@ -78,7 +81,7 @@ async function seedServiceAccount() {
 
   // 3. Long-lived session whose token is the configured bearer credential
   //    (unique by token; rebind to the service-account user and refresh expiry).
-  const expiresAt = new Date(Date.now() + SESSION_TTL_MS)
+  const expiresAt = SESSION_EXPIRES_AT
   await db
     .insert(AuthSessionTable)
     .values({
