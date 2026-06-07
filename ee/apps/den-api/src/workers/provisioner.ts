@@ -253,19 +253,21 @@ async function provisionWorkerOnRender(
   const serviceName = slug(
     `${env.render.workerNamePrefix}-${input.name}-${input.workerId.slice(0, 8)}`,
   ).slice(0, 62)
-  const orchestratorPackage = env.render.workerOpenworkVersion?.trim()
-    ? `openwork-orchestrator@${env.render.workerOpenworkVersion.trim()}`
-    : "openwork-orchestrator"
-  const buildCommand = [
-    `npm install -g ${orchestratorPackage}`,
-    "node ./scripts/install-opencode.mjs",
-  ].join(" && ")
-  // Start with /tmp/workspace for initial deploy (no disk needed)
-  // After disk is attached, we'll update the service to use /workspace
-  const startCommand = [
-    "mkdir -p /tmp/workspace",
-    "attempt=0; while [ $attempt -lt 3 ]; do attempt=$((attempt + 1)); openwork serve --workspace /tmp/workspace --remote-access --openwork-port ${PORT:-10000} --opencode-host 127.0.0.1 --opencode-port 4096 --connect-host 127.0.0.1 --cors '*' --approval manual --allow-external --opencode-source external --opencode-bin ./bin/opencode --no-opencode-router --verbose && exit 0; echo \"openwork serve failed (attempt $attempt); retrying in 3s\"; sleep 3; done; exit 1",
-  ].join(" && ")
+
+  // Docker deployment configuration
+  // Use the production Dockerfile from packaging/docker/Dockerfile
+  const dockerfilePath = "packaging/docker/Dockerfile"
+  const dockerContext = "."
+
+  // Override the default CMD to:
+  // 1. Use PORT env var (Render assigns this dynamically, typically 10000)
+  // 2. Start with /tmp/workspace initially (before disk is attached)
+  // 3. Add retry logic for resilience
+  const dockerCommand = [
+    "/bin/sh",
+    "-c",
+    "mkdir -p /tmp/workspace && attempt=0; while [ $attempt -lt 3 ]; do attempt=$((attempt + 1)); openwork serve --workspace /tmp/workspace --remote-access --openwork-port ${PORT:-10000} --opencode-host 127.0.0.1 --opencode-port 4096 --connect-host 127.0.0.1 --cors '*' --approval manual --allow-external --opencode-source external --opencode-bin ./bin/opencode --no-opencode-router --verbose && exit 0; echo \"openwork serve failed (attempt $attempt); retrying in 3s\"; sleep 3; done; exit 1",
+  ]
 
   const payload = {
     type: "web_service",
@@ -274,20 +276,21 @@ async function provisionWorkerOnRender(
     repo: env.render.workerRepo,
     branch: env.render.workerBranch,
     autoDeploy: "no",
-    rootDir: env.render.workerRootDir,
+    rootDir: "",
     envVars: [
       { key: "OPENWORK_TOKEN", value: input.clientToken },
       { key: "OPENWORK_HOST_TOKEN", value: input.hostToken },
       { key: "DEN_WORKER_ID", value: input.workerId },
     ],
     serviceDetails: {
-      env: "node",
+      env: "docker",
       plan: env.render.workerPlan,
       region: env.render.workerRegion,
       healthCheckPath: "/health",
       envSpecificDetails: {
-        buildCommand,
-        startCommand,
+        dockerfilePath,
+        dockerContext,
+        dockerCommand: dockerCommand.join(" "),
       },
     },
   }
@@ -317,17 +320,18 @@ async function provisionWorkerOnRender(
       console.log(`[provisioner] Persistent disk added, updating service to use /workspace...`)
 
       // Update service to use /workspace now that disk is mounted
-      const updatedStartCommand = [
-        "mkdir -p /workspace",
-        "attempt=0; while [ $attempt -lt 3 ]; do attempt=$((attempt + 1)); openwork serve --workspace /workspace --remote-access --openwork-port ${PORT:-10000} --opencode-host 127.0.0.1 --opencode-port 4096 --connect-host 127.0.0.1 --cors '*' --approval manual --allow-external --opencode-source external --opencode-bin ./bin/opencode --no-opencode-router --verbose && exit 0; echo \"openwork serve failed (attempt $attempt); retrying in 3s\"; sleep 3; done; exit 1",
-      ].join(" && ")
+      const updatedDockerCommand = [
+        "/bin/sh",
+        "-c",
+        "mkdir -p /workspace && attempt=0; while [ $attempt -lt 3 ]; do attempt=$((attempt + 1)); openwork serve --workspace /workspace --remote-access --openwork-port ${PORT:-10000} --opencode-host 127.0.0.1 --opencode-port 4096 --connect-host 127.0.0.1 --cors '*' --approval manual --allow-external --opencode-source external --opencode-bin ./bin/opencode --no-opencode-router --verbose && exit 0; echo \"openwork serve failed (attempt $attempt); retrying in 3s\"; sleep 3; done; exit 1",
+      ]
 
       await renderRequest(`/services/${serviceId}`, {
         method: "PATCH",
         body: JSON.stringify({
           serviceDetails: {
             envSpecificDetails: {
-              startCommand: updatedStartCommand,
+              dockerCommand: updatedDockerCommand.join(" "),
             },
           },
         }),

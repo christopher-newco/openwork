@@ -41,11 +41,12 @@ RENDER_OWNER_ID=<your-render-owner-id>
 # Worker configuration
 RENDER_WORKER_REPO=https://github.com/different-ai/openwork
 RENDER_WORKER_BRANCH=main
-RENDER_WORKER_ROOT_DIR=apps/orchestrator
+RENDER_WORKER_ROOT_DIR=  # Empty for Docker builds (uses repo root)
 RENDER_WORKER_PLAN=starter  # or: standard, pro, etc.
 RENDER_WORKER_REGION=oregon  # or: frankfurt, singapore, etc.
 RENDER_WORKER_NAME_PREFIX=openwork-workspace
-RENDER_WORKER_OPENWORK_VERSION=latest  # or specific version: 1.2.3
+RENDER_WORKER_OPENWORK_VERSION=0.15.1  # Version used in Dockerfile build arg
+RENDER_WORKER_DISK_SIZE_GB=40  # Persistent disk size (0 to disable)
 
 # Optional: Custom domains
 RENDER_WORKER_PUBLIC_DOMAIN_SUFFIX=workspace.yourdomain.com
@@ -63,12 +64,16 @@ RENDER_POLL_INTERVAL_MS=5000  # 5 seconds
 #### How It Works
 
 1. User creates a workspace in den-web
-2. den-api calls Render API to create a new web service
-3. Render builds and deploys openwork-orchestrator
-4. Service waits for deployment to become "live"
-5. Health endpoint is checked at `/health`
-6. (Optional) Custom domain is attached via DNS
-7. Workspace URL is returned to user
+2. den-api calls Render API to create a new Docker-based web service
+3. Render builds Docker image from `packaging/docker/Dockerfile`
+4. Service deploys with initial /tmp/workspace directory
+5. Persistent disk is attached and mounted at /workspace
+6. Service is updated to use /workspace and redeployed
+7. Health endpoint is checked at `/health`
+8. (Optional) Custom domain is attached via DNS
+9. Workspace URL is returned to user
+
+**Deployment Method**: Docker-based deployment using the production Dockerfile at `packaging/docker/Dockerfile`. This installs `openwork-orchestrator` from npm and provides a pre-configured runtime environment.
 
 #### Cost Estimation
 
