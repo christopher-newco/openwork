@@ -168,7 +168,12 @@ export const auth = betterAuth({
     },
     crossSubDomainCookies: {
       enabled: true,
-      domain: env.cookieDomain?.replace(/^\./, "") ?? "soapbox.build", // Remove leading dot if present
+      domain: env.cookieDomain ?? ".soapbox.build", // Keep leading dot for cross-subdomain
+    },
+    defaultCookieAttributes: {
+      sameSite: "none", // Required for cross-subdomain cookies
+      secure: true,      // Required with sameSite: none
+      httpOnly: true,    // Security best practice
     },
     ipAddress: {
       ipAddressHeaders: ["x-forwarded-for", "x-real-ip", "cf-connecting-ip"],
