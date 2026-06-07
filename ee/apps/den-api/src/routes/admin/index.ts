@@ -325,7 +325,7 @@ export function registerAdminRoutes<T extends { Variables: AuthContextVariables 
     describeRoute({
       tags: ["Admin"],
       summary: "Fix Soapbox worker",
-      description: "Deletes broken workers and provisions a new Daytona worker for the Soapbox organization.",
+      description: "Deletes broken workers and provisions a new Docker-based Render worker for the Soapbox organization with 40GB persistent disk.",
       responses: {
         200: jsonResponse("Worker provisioned successfully.", z.object({ message: z.string(), workerId: z.string() })),
         401: jsonResponse("The caller must be an authenticated admin.", unauthorizedSchema),
@@ -339,28 +339,37 @@ export function registerAdminRoutes<T extends { Variables: AuthContextVariables 
 
       const token = () => randomBytes(32).toString("hex")
 
+      console.log("=== Recreating Worker with Docker Deployment ===")
+
       // Find Soapbox org
+      console.log("1. Finding Soapbox organization...")
       const orgs = await db
         .select()
         .from(OrganizationTable)
-        .where(eq(OrganizationTable.name, "Soapbox"))
+        .where(eq(OrganizationTable.slug, "soapbox"))
         .limit(1)
 
       const org = orgs[0]
       if (!org) {
         return c.json({ error: "Soapbox org not found" }, 404)
       }
+      console.log(`   ✓ Found: ${org.name} (${org.id})`)
 
-      // Delete broken workers
+      // Delete existing workers
+      console.log("2. Deleting existing workers...")
       const workers = await db
         .select()
         .from(WorkerTable)
         .where(eq(WorkerTable.org_id, org.id))
 
+      console.log(`   Found ${workers.length} existing worker(s)`)
+
       for (const worker of workers) {
+        console.log(`   Deleting: ${worker.name} (${worker.id})`)
         await db.delete(WorkerInstanceTable).where(eq(WorkerInstanceTable.worker_id, worker.id))
         await db.delete(WorkerTokenTable).where(eq(WorkerTokenTable.worker_id, worker.id))
         await db.delete(WorkerTable).where(eq(WorkerTable.id, worker.id))
+        console.log(`   ✓ Deleted ${worker.id}`)
       }
 
       // Create new worker
@@ -368,12 +377,16 @@ export function registerAdminRoutes<T extends { Variables: AuthContextVariables 
       const workerId = createDenTypeId("worker")
       const workerName = `${org.name} Workspace`
 
+      console.log("3. Creating new Docker-based worker...")
+      console.log(`   Name: ${workerName}`)
+      console.log(`   ID: ${workerId}`)
+
       await db.insert(WorkerTable).values({
         id: workerId,
         org_id: org.id,
         created_by_user_id: null,
         name: workerName,
-        description: null,
+        description: "Cloud workspace on Render with Docker deployment and 40GB disk",
         destination: "cloud",
         status: "provisioning",
         image_version: null,
@@ -407,8 +420,12 @@ export function registerAdminRoutes<T extends { Variables: AuthContextVariables 
         },
       ])
 
-      // Start Daytona provisioning
-      console.log(`[fix-soapbox-worker] Starting Daytona provisioning for ${workerId}`)
+      console.log(`   ✓ Worker record created`)
+      console.log(`   Host Token: ${hostToken.substring(0, 16)}...`)
+      console.log(`   Client Token: ${clientToken.substring(0, 16)}...`)
+
+      // Start Render provisioning
+      console.log("4. Starting Render provisioning with Docker...")
 
       try {
         await continueCloudProvisioning({
@@ -419,13 +436,17 @@ export function registerAdminRoutes<T extends { Variables: AuthContextVariables 
           activityToken,
         })
 
+        console.log("\n✅ SUCCESS! Worker provisioned with Docker deployment")
+
         return c.json({
-          message: "Worker provisioned successfully!",
+          message: "Worker recreated with Docker deployment on Render. Build will complete in 2-5 minutes.",
           workerId,
+          renderDashboard: "https://dashboard.render.com",
+          workspaceUrl: "https://app.soapbox.build",
         })
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error)
-        console.error(`[fix-soapbox-worker] Provisioning failed immediately: ${errorMessage}`)
+        console.error(`❌ Error: ${errorMessage}`)
 
         return c.json({
           error: "provisioning_failed",
