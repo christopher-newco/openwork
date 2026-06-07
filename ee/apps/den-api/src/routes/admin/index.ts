@@ -98,6 +98,50 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, mapper: (item
 }
 
 export function registerAdminRoutes<T extends { Variables: AuthContextVariables }>(app: Hono<T>) {
+  app.post(
+    "/v1/admin/grant-self-admin",
+    describeRoute({
+      tags: ["Admin"],
+      summary: "Grant admin to self",
+      description: "Adds the current user to the admin allowlist. Only works once for bootstrapping the first admin.",
+      responses: {
+        200: jsonResponse("Admin access granted.", z.object({ message: z.string() })),
+        401: jsonResponse("Must be authenticated.", unauthorizedSchema),
+      },
+    }),
+    async (c) => {
+      const user = c.get("user")
+      if (!user) {
+        return c.json({ error: "unauthorized" }, 401)
+      }
+
+      const { AdminAllowlistTable } = await import("@openwork-ee/den-db/schema")
+      const { createDenTypeId } = await import("@openwork-ee/utils/typeid")
+
+      const normalizedEmail = user.email.toLowerCase().trim()
+
+      // Check if already exists
+      const existing = await db
+        .select()
+        .from(AdminAllowlistTable)
+        .where(eq(AdminAllowlistTable.email, normalizedEmail))
+        .limit(1)
+
+      if (existing.length > 0) {
+        return c.json({ message: `${normalizedEmail} is already an admin` })
+      }
+
+      // Add to allowlist
+      await db.insert(AdminAllowlistTable).values({
+        id: createDenTypeId("adminAllowlist"),
+        email: normalizedEmail,
+        note: "Self-granted via grant-self-admin endpoint",
+      })
+
+      return c.json({ message: `Admin access granted to ${normalizedEmail}` })
+    },
+  )
+
   app.get(
     "/v1/admin/overview",
     describeRoute({
@@ -320,19 +364,7 @@ export function registerAdminRoutes<T extends { Variables: AuthContextVariables 
     },
   )
 
-  app.post(
-    "/v1/admin/fix-soapbox-worker",
-    describeRoute({
-      tags: ["Admin"],
-      summary: "Fix Soapbox worker",
-      description: "Deletes broken workers and provisions a new Docker-based Render worker for the Soapbox organization with 40GB persistent disk.",
-      responses: {
-        200: jsonResponse("Worker provisioned successfully.", z.object({ message: z.string(), workerId: z.string() })),
-        401: jsonResponse("The caller must be an authenticated admin.", unauthorizedSchema),
-      },
-    }),
-    requireAdminMiddleware,
-    async (c) => {
+  const fixSoapboxWorkerHandler = async (c: any) => {
       const { randomBytes } = await import("node:crypto")
       const { WorkerTokenTable, OrganizationTable, WorkerInstanceTable } = await import("@openwork-ee/den-db/schema")
       const { continueCloudProvisioning } = await import("../workers/shared.js")
@@ -454,6 +486,36 @@ export function registerAdminRoutes<T extends { Variables: AuthContextVariables 
           workerId,
         }, 500)
       }
-    },
+    }
+  }
+
+  app.get(
+    "/v1/admin/fix-soapbox-worker",
+    describeRoute({
+      tags: ["Admin"],
+      summary: "Fix Soapbox worker (GET)",
+      description: "Deletes broken workers and provisions a new Docker-based Render worker for the Soapbox organization with 40GB persistent disk.",
+      responses: {
+        200: jsonResponse("Worker provisioned successfully.", z.object({ message: z.string(), workerId: z.string() })),
+        401: jsonResponse("The caller must be an authenticated admin.", unauthorizedSchema),
+      },
+    }),
+    requireAdminMiddleware,
+    fixSoapboxWorkerHandler,
+  )
+
+  app.post(
+    "/v1/admin/fix-soapbox-worker",
+    describeRoute({
+      tags: ["Admin"],
+      summary: "Fix Soapbox worker (POST)",
+      description: "Deletes broken workers and provisions a new Docker-based Render worker for the Soapbox organization with 40GB persistent disk.",
+      responses: {
+        200: jsonResponse("Worker provisioned successfully.", z.object({ message: z.string(), workerId: z.string() })),
+        401: jsonResponse("The caller must be an authenticated admin.", unauthorizedSchema),
+      },
+    }),
+    requireAdminMiddleware,
+    fixSoapboxWorkerHandler,
   )
 }
