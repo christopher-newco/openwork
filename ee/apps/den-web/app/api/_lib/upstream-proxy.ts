@@ -164,9 +164,13 @@ function getJsonRedirectUrl(body: ArrayBuffer): string | null {
 }
 
 function rewriteSetCookieDomain(cookie: string): string {
-  // Remove Domain attribute so cookie defaults to current domain
-  // This allows cross-domain proxying to work (API cookies set on admin domain)
-  let rewritten = cookie.replace(/;\s*Domain=[^;]+/gi, '');
+  // Preserve Domain=.soapbox.build for cross-subdomain cookie sharing
+  // Only strip Domain for other cases (legacy cross-domain proxy behavior)
+  let rewritten = cookie;
+
+  if (!cookie.includes('Domain=.soapbox.build')) {
+    rewritten = cookie.replace(/;\s*Domain=[^;]+/gi, '');
+  }
 
   // Ensure SameSite is set to Lax or None for cross-site usage
   if (!rewritten.includes('SameSite=')) {
