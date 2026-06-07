@@ -266,7 +266,7 @@ async function provisionWorkerOnRender(
   const dockerCommand = [
     "/bin/sh",
     "-c",
-    "set -x && mkdir -p /tmp/workspace && exec openwork serve --workspace /tmp/workspace --remote-access --openwork-port ${PORT:-10000} --openwork-host 0.0.0.0 --opencode-host 127.0.0.1 --opencode-port 4096 --connect-host 0.0.0.0 --cors '*' --approval manual --allow-external --opencode-source external --no-opencode-router --verbose",
+    "set -ex && mkdir -p /tmp/workspace && openwork serve --workspace /tmp/workspace --openwork-port ${PORT:-10000} --openwork-host 0.0.0.0 --verbose 2>&1 | tee /tmp/openwork.log || (cat /tmp/openwork.log; exit 1)",
   ]
 
   const payload = {
