@@ -28,6 +28,24 @@ proxy.on('error', (err, req, res) => {
   }
 });
 
+// Intercept responses to rewrite Daytona URLs back to proxy URLs
+proxy.on('proxyRes', (proxyRes, req, res) => {
+  const location = proxyRes.headers['location'];
+  if (location && location.includes('daytonaproxy')) {
+    try {
+      // Parse the Daytona URL and extract path/query
+      const daytonaUrl = new URL(location);
+      const proxyUrl = new URL(`https://${req.headers.host}`);
+      proxyUrl.pathname = daytonaUrl.pathname;
+      proxyUrl.search = daytonaUrl.search;
+      proxyRes.headers['location'] = proxyUrl.toString();
+      console.log('[proxy] Rewrote redirect:', { from: location, to: proxyRes.headers['location'] });
+    } catch (e) {
+      console.error('[proxy] Failed to rewrite redirect:', e.message);
+    }
+  }
+});
+
 async function getWorkspaceConfig(sessionToken, cookieName = 'den.session') {
   try {
     console.log(`[getWorkspaceConfig] Fetching workers from ${DEN_API_BASE}/v1/workers`);
