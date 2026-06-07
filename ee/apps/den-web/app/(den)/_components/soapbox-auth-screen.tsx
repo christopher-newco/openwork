@@ -65,16 +65,6 @@ export function SoapboxAuthScreen() {
   return (
     <section className="den-page flex w-full items-center justify-center py-8">
       <div className="w-full max-w-md">
-        {/* Simple header */}
-        <div className="mb-8 text-center">
-          <h1 className="text-3xl font-semibold tracking-tight text-[var(--dls-text-primary)]">
-            Soapbox
-          </h1>
-          <p className="mt-2 text-sm text-[var(--dls-text-secondary)]">
-            Sign in to your workspace
-          </p>
-        </div>
-
         {/* Auth panel - simplified for Soapbox */}
         <AuthPanel
           initialMode="sign-in"
