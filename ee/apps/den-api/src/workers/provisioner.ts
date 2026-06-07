@@ -266,7 +266,7 @@ async function provisionWorkerOnRender(
   const dockerCommand = [
     "/bin/sh",
     "-c",
-    "mkdir -p /tmp/workspace && attempt=0; while [ $attempt -lt 3 ]; do attempt=$((attempt + 1)); openwork serve --workspace /tmp/workspace --remote-access --openwork-port ${PORT:-10000} --opencode-host 127.0.0.1 --opencode-port 4096 --connect-host 127.0.0.1 --cors '*' --approval manual --allow-external --opencode-source external --no-opencode-router --verbose && exit 0; echo \"openwork serve failed (attempt $attempt); retrying in 3s\"; sleep 3; done; exit 1",
+    "mkdir -p /tmp/workspace && openwork serve --workspace /tmp/workspace --remote-access --openwork-port ${PORT:-10000} --opencode-host 127.0.0.1 --opencode-port 4096 --connect-host 127.0.0.1 --cors '*' --approval manual --allow-external --opencode-source external --no-opencode-router --verbose 2>&1",
   ]
 
   const payload = {
@@ -281,6 +281,7 @@ async function provisionWorkerOnRender(
       { key: "OPENWORK_TOKEN", value: input.clientToken },
       { key: "OPENWORK_HOST_TOKEN", value: input.hostToken },
       { key: "DEN_WORKER_ID", value: input.workerId },
+      { key: "WORKER_ACTIVITY_BASE_URL", value: "https://api.admin.soapbox.build" },
     ],
     serviceDetails: {
       env: "docker",
