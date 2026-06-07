@@ -266,7 +266,7 @@ async function provisionWorkerOnRender(
   const dockerCommand = [
     "/bin/sh",
     "-c",
-    "mkdir -p /tmp/workspace && openwork serve --workspace /tmp/workspace --remote-access --openwork-port ${PORT:-10000} --opencode-host 127.0.0.1 --opencode-port 4096 --connect-host 127.0.0.1 --cors '*' --approval manual --allow-external --opencode-source external --no-opencode-router --verbose 2>&1",
+    "set -x && mkdir -p /tmp/workspace && exec openwork serve --workspace /tmp/workspace --remote-access --openwork-port ${PORT:-10000} --opencode-host 0.0.0.0 --opencode-port 4096 --connect-host 0.0.0.0 --cors '*' --approval manual --allow-external --opencode-source external --no-opencode-router --verbose",
   ]
 
   const payload = {
@@ -324,7 +324,7 @@ async function provisionWorkerOnRender(
       const updatedDockerCommand = [
         "/bin/sh",
         "-c",
-        "mkdir -p /workspace && attempt=0; while [ $attempt -lt 3 ]; do attempt=$((attempt + 1)); openwork serve --workspace /workspace --remote-access --openwork-port ${PORT:-10000} --opencode-host 127.0.0.1 --opencode-port 4096 --connect-host 127.0.0.1 --cors '*' --approval manual --allow-external --opencode-source external --no-opencode-router --verbose && exit 0; echo \"openwork serve failed (attempt $attempt); retrying in 3s\"; sleep 3; done; exit 1",
+        "set -x && mkdir -p /workspace && exec openwork serve --workspace /workspace --remote-access --openwork-port ${PORT:-10000} --opencode-host 0.0.0.0 --opencode-port 4096 --connect-host 0.0.0.0 --cors '*' --approval manual --allow-external --opencode-source external --no-opencode-router --verbose",
       ]
 
       await renderRequest(`/services/${serviceId}`, {
