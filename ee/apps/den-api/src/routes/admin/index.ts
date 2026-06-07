@@ -5,7 +5,7 @@ import { describeRoute } from "hono-openapi"
 import { z } from "zod"
 import { getCloudWorkerAdminBillingStatus } from "../../billing/polar.js"
 import { db } from "../../db.js"
-import { queryValidator, requireAdminMiddleware } from "../../middleware/index.js"
+import { queryValidator, requireAdminMiddleware, requireUserMiddleware } from "../../middleware/index.js"
 import { denTypeIdSchema, invalidRequestSchema, jsonResponse, unauthorizedSchema } from "../../openapi.js"
 import type { AuthContextVariables } from "../../session.js"
 
@@ -109,6 +109,7 @@ export function registerAdminRoutes<T extends { Variables: AuthContextVariables 
         401: jsonResponse("Must be authenticated.", unauthorizedSchema),
       },
     }),
+    requireUserMiddleware,
     async (c) => {
       const user = c.get("user")
       if (!user) {
