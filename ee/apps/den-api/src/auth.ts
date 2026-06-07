@@ -161,8 +161,16 @@ export const auth = betterAuth({
   },
   advanced: {
     cookiePrefix: "den",
-    // Don't override cookie names - let Better Auth use prefix + default name
-    // This will create cookies like: den.session_token, den.session_data, etc.
+    cookies: {
+      session_token: {
+        attributes: {
+          domain: env.cookieDomain ?? ".soapbox.build", // Explicit domain for session cookie
+          sameSite: "none",
+          secure: true,
+          httpOnly: true,
+        },
+      },
+    },
     crossSubDomainCookies: {
       enabled: true,
       domain: env.cookieDomain ?? ".soapbox.build", // Keep leading dot for cross-subdomain
