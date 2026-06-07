@@ -361,7 +361,11 @@ export async function continueCloudProvisioning(input: {
 
     const message = error instanceof Error ? error.message : "provisioning_failed"
     console.error(`[workers] provisioning failed for ${input.workerId}: ${message}`)
-    throw error
+    // Do NOT re-throw: this runs as a fire-and-forget background task
+    // (`void continueCloudProvisioning(...)`), so a re-thrown error becomes an
+    // unhandled promise rejection that crashes the entire API process. The
+    // worker is already marked "failed" and the error logged; failing one
+    // worker must not take down the control plane.
   }
 }
 
