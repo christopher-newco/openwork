@@ -259,25 +259,17 @@ async function provisionWorkerOnRender(
     `${env.render.workerNamePrefix}-${input.name}-${workerIdSuffix}`,
   ).slice(0, 62)
 
-  // Docker deployment configuration
-  // Use the production Dockerfile from packaging/docker/Dockerfile
-  const dockerfilePath = "packaging/docker/Dockerfile"
+  // Build the microsandbox worker image, which compiles openwork-server from
+  // source and bakes it in, then launches it via its ENTRYPOINT
+  // (packaging/docker/microsandbox-entrypoint.sh) with the --remote-access +
+  // --allow-external --openwork-server-bin path that actually publishes the
+  // server on 0.0.0.0. The plain packaging/docker/Dockerfile downloads
+  // openwork-server at runtime and never launches it, so nothing binds 0.0.0.0
+  // and Render's port scan times out. We do NOT override the command: the
+  // entrypoint reads OPENWORK_* env (incl. OPENWORK_PORT, which honors Render's
+  // injected PORT) and starts the server itself.
+  const dockerfilePath = "packaging/docker/Dockerfile.microsandbox"
   const dockerContext = "."
-
-  // Override the default CMD to:
-  // 1. Use PORT env var (Render assigns this dynamically, typically 10000)
-  // 2. Start with /tmp/workspace initially (before disk is attached)
-  //
-  // The openwork-server is published on 0.0.0.0 ONLY via --remote-access (see
-  // packaging/docker/README.md and the Dockerfile CMD) — passing --openwork-host
-  // 0.0.0.0 alone leaves it bound to localhost, so Render's port scan finds no
-  // open port on 0.0.0.0 and the deploy times out. Mirror the documented launch
-  // path (also used by the post-disk update below and the dev provisioner).
-  const dockerCommand = [
-    "/bin/sh",
-    "-c",
-    "set -x && mkdir -p /tmp/workspace && exec openwork serve --workspace /tmp/workspace --remote-access --openwork-port ${PORT:-10000} --openwork-token \"$OPENWORK_TOKEN\" --openwork-host-token \"$OPENWORK_HOST_TOKEN\" --opencode-host 127.0.0.1 --opencode-port 4096 --connect-host 127.0.0.1 --cors '*' --approval manual --no-opencode-router --verbose",
-  ]
 
   const payload = {
     type: "web_service",
@@ -292,6 +284,14 @@ async function provisionWorkerOnRender(
       { key: "OPENWORK_HOST_TOKEN", value: input.hostToken },
       { key: "DEN_WORKER_ID", value: input.workerId },
       { key: "WORKER_ACTIVITY_BASE_URL", value: "https://api.admin.soapbox.build" },
+      // Workspace lives on the persistent disk (mounted at /workspace below).
+      { key: "OPENWORK_WORKSPACE", value: "/workspace" },
+      // Build ARGs for Dockerfile.microsandbox — Render auto-translates service
+      // env vars into Docker build args, and the entrypoint also reads them at
+      // runtime. Pinned versions; bump via env.render.* without code changes.
+      { key: "OPENWORK_ORCHESTRATOR_VERSION", value: env.render.workerOrchestratorVersion },
+      { key: "OPENWORK_SERVER_VERSION", value: env.render.workerServerVersion },
+      { key: "OPENCODE_VERSION", value: env.render.workerOpencodeVersion },
     ],
     serviceDetails: {
       env: "docker",
@@ -301,7 +301,6 @@ async function provisionWorkerOnRender(
       envSpecificDetails: {
         dockerfilePath,
         dockerContext,
-        dockerCommand: dockerCommand.join(" "),
       },
     },
   }
@@ -328,29 +327,11 @@ async function provisionWorkerOnRender(
           mountPath: "/workspace",
         }),
       })
-      console.log(`[provisioner] Persistent disk added, updating service to use /workspace...`)
+      console.log(`[provisioner] Persistent disk added, redeploying to mount it...`)
 
-      // Update service to use /workspace now that disk is mounted
-      const updatedDockerCommand = [
-        "/bin/sh",
-        "-c",
-        "set -x && mkdir -p /workspace && exec openwork serve --workspace /workspace --remote-access --openwork-port ${PORT:-10000} --openwork-token \"$OPENWORK_TOKEN\" --openwork-host-token \"$OPENWORK_HOST_TOKEN\" --opencode-host 127.0.0.1 --opencode-port 4096 --connect-host 127.0.0.1 --cors '*' --approval manual --no-opencode-router --verbose",
-      ]
-
-      await renderRequest(`/services/${serviceId}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          serviceDetails: {
-            envSpecificDetails: {
-              dockerCommand: updatedDockerCommand.join(" "),
-            },
-          },
-        }),
-      })
-
-      console.log(`[provisioner] Service updated, triggering redeploy to mount disk...`)
-
-      // Trigger redeploy to attach the disk
+      // No command/env change needed: the worker already runs with
+      // OPENWORK_WORKSPACE=/workspace, which is the disk mount path. Just
+      // redeploy so the container restarts with the disk attached.
       await renderRequest(`/services/${serviceId}/deploys`, {
         method: "POST",
         body: JSON.stringify({}),

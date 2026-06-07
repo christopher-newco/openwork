@@ -4,7 +4,9 @@ set -eu
 OPENWORK_WORKSPACE="${OPENWORK_WORKSPACE:-/workspace}"
 OPENWORK_DATA_DIR="${OPENWORK_DATA_DIR:-/data/openwork-orchestrator}"
 OPENWORK_SIDECAR_DIR="${OPENWORK_SIDECAR_DIR:-/data/sidecars}"
-OPENWORK_PORT="${OPENWORK_PORT:-8787}"
+# Honor a platform-injected PORT (e.g. Render/Heroku assign $PORT and route to it)
+# before falling back to the default published port.
+OPENWORK_PORT="${OPENWORK_PORT:-${PORT:-8787}}"
 OPENWORK_OPENCODE_PORT="${OPENWORK_OPENCODE_PORT:-4096}"
 OPENWORK_TOKEN="${OPENWORK_TOKEN:-microsandbox-token}"
 OPENWORK_HOST_TOKEN="${OPENWORK_HOST_TOKEN:-microsandbox-host-token}"

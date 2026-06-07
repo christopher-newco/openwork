@@ -281,6 +281,11 @@ export const env = {
     workerPlan: parsed.RENDER_WORKER_PLAN ?? "starter",
     workerRegion: parsed.RENDER_WORKER_REGION ?? "oregon",
     workerOpenworkVersion: parsed.RENDER_WORKER_OPENWORK_VERSION,
+    // Versions baked into the Dockerfile.microsandbox build (passed as Render
+    // env vars -> Docker build ARGs). Bump via env without code changes.
+    workerOrchestratorVersion: parsed.RENDER_WORKER_ORCHESTRATOR_VERSION ?? "0.15.1",
+    workerServerVersion: parsed.RENDER_WORKER_SERVER_VERSION ?? "0.15.1",
+    workerOpencodeVersion: parsed.RENDER_WORKER_OPENCODE_VERSION ?? "1.15.12",
     workerNamePrefix: parsed.RENDER_WORKER_NAME_PREFIX ?? "den-worker",
     workerDiskSizeGB: parsed.RENDER_WORKER_DISK_SIZE_GB ?? "40",
     workerPublicDomainSuffix: parsed.RENDER_WORKER_PUBLIC_DOMAIN_SUFFIX,
