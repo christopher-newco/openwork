@@ -1,69 +1,49 @@
 # Soapbox Customizations
 
-Tracks Soapbox-specific changes on the `soapbox-template` branch of
-`christopher-newco/openwork` (fork of `different-ai/openwork`). Reference this
-during upstream merges to preserve customizations.
+> **⚠️ 2026-06-07 status correction — this branch's code is REDUNDANT. Read this first.**
+>
+> This `soapbox-template` branch was built on top of **`dev`**. After it was written,
+> investigation proved the **live Den API deploys from `main`**, and **`main` already
+> implements everything this branch adds**:
+> - **Persistent Render disk** (two-phase: create → `POST /v1/disks` 40GB `/workspace`
+>   → PATCH command → redeploy), gated by `RENDER_WORKER_DISK_SIZE_GB`.
+> - **Worker builds from source** via `packaging/docker/Dockerfile` (Render `env: docker`),
+>   not the npm package.
+>
+> `dev` and `main` have **diverged into two different provisioner architectures**
+> (`dev` = Render `runtime: node` + `npm install -g openwork-orchestrator`, no disk;
+> `main` = Docker-from-source + disk). The disk/env changes on this branch only port
+> `main`'s feature onto `dev` — **do NOT merge this branch into `main`.**
+>
+> Possibly still useful on `main` (net-new there): the two admin endpoints
+> `POST /v1/admin/workers/:id/refresh` and `GET /v1/admin/workers/:id/render-dashboard-url`.
+> Everything else here is superseded.
 
-Last updated: 2026-06-07
+## How the live system actually works (verified against `main` + the running API)
 
-## ⚠️ Architecture reality (corrects the original design doc)
+- **Live Den API** = `main`, at `https://api.admin.soapbox.build` (proven by fingerprinting
+  `/openapi.json`: 131 routes; admin routes `delete-all-workers`/`fix-soapbox-worker`/
+  `grant-self-admin`/`list-orgs`/`overview` exist on `main`, not `dev`).
+- **Workers** = Render `web_service`, `env: docker`, built from `packaging/docker/Dockerfile`
+  of the fork (`RENDER_WORKER_REPO`/`BRANCH`), with a 40GB persistent disk at `/workspace`.
+- **Admin auth** = session-based (better-auth `user` + `AdminAllowlistTable` email check).
+  There is **no API-key path** for admin endpoints.
 
-The "Render Worker Provisioning with Template Fork" design assumed workers are
-built **from source** (a multi-stage `packaging/docker/Dockerfile` compiling
-`apps/orchestrator`). **That is not how workers are built.** Verified against
-the live Render services (2026-06-07):
+## The real open task: 2 stale workers have no disk
 
-- Render worker services build with **`buildCommand: npm install -g openwork-orchestrator`**
-  (the *published npm package*), `rootDir: ee/apps/den-worker-runtime`, branch `main`.
-- Editing `apps/orchestrator/src` or `packaging/docker/Dockerfile` therefore has
-  **no effect on workers**. The fork repo only supplies the `den-worker-runtime`
-  build scripts; the orchestrator itself comes from npm.
+The 2 currently-running Render workers are **stale** — provisioned by older (`dev`-style:
+npm/node, `/tmp/workspace`, no disk) code, so their data is still ephemeral. Fixing them
+needs **no code change** — just kill + reprovision through `main`'s existing logic:
 
-**Open decision — how to ship orchestrator customizations to workers:**
-1. **Publish a custom npm package** (e.g. `@christopher-newco/openwork-orchestrator`)
-   and point `RENDER_WORKER_OPENWORK_VERSION` / buildCommand at it; or
-2. **Change the worker `buildCommand`** to build the orchestrator from the cloned
-   fork source instead of `npm install -g`.
+1. Delete the worker(s): the `/v1/admin/delete-all-workers` endpoint only removes **DB rows**
+   — the Render services must ALSO be deleted via the Render API or they keep running/billing.
+2. Reprovision via the normal `POST /v1/workers` flow (so the den-db gets the worker record +
+   OPENWORK/HOST tokens); `main`'s provisioner then attaches the disk automatically.
 
-Until this is decided, UI/route/middleware customizations (design Phases 2 & 6)
-are not buildable in a way that reaches workers. The disk + admin-endpoint work
-below does **not** depend on this decision.
+**Blocker:** both require an authenticated **admin session** to `api.admin.soapbox.build`,
+which is not available headlessly (no creds in the vault). Must be driven from the admin web
+app by an allowlisted admin, or via a session token provided to automation.
 
-## Changes on this branch
-
-### Render provisioner — persistent disk + two-phase deploy
-- `ee/apps/den-api/src/workers/provisioner.ts`
-  - Workers now get a **persistent Render disk** (default 40GB at `/workspace`)
-    so user data survives restarts/refreshes. Previously the worker served from
-    ephemeral `/tmp/workspace` — every restart wiped all data.
-  - Two-phase deploy: create service → wait live → `POST /v1/disks` → redeploy →
-    wait live (Render rejects disk creation before the service exists).
-  - Extracted `findRenderServiceForWorker()` (shared by deprovision + admin) and
-    added `refreshWorkerOnRender()` + `renderDashboardUrl()`.
-  - Opt out with `RENDER_WORKER_DISK_SIZE_GB=0` (falls back to ephemeral).
-- `ee/apps/den-api/src/env.ts`
-  - New env: `RENDER_WORKER_DISK_SIZE_GB` (default 40), `RENDER_WORKER_DISK_MOUNT_PATH`
-    (default `/workspace`).
-
-### Admin worker-management endpoints
-- `ee/apps/den-api/src/routes/admin/index.ts`
-  - `POST /v1/admin/workers/:id/refresh` — triggers a Render redeploy, preserving
-    the disk/env/tokens; sets worker status to `provisioning`.
-  - `GET /v1/admin/workers/:id/render-dashboard-url` — returns the Render
-    dashboard link for the worker's service.
-  - Both gated by `requireAdminMiddleware`; use the existing
-    `paramValidator(workerIdParamSchema)` convention.
-
-## Not yet done (need decisions / gated steps)
-- Orchestrator customization delivery (see open decision above) → blocks UI
-  branding, `/api/soapbox/*` routes, den-token middleware, tenant isolation.
-- Admin **UI** controls (provision/refresh/dashboard buttons) in `ee/apps/den-web`.
-- Branch strategy: `upstream-dev` mirror + adopting `soapbox-template` as the
-  worker build branch (currently workers build from `main`) — a Railway env change.
-- Deploy: setting `RENDER_WORKER_DISK_SIZE_GB`/`RENDER_OWNER_ID` in Railway,
-  redeploying the Den API, and provisioning/refreshing workers (paid, prod).
-
-## Merge conflict watch list
-- `ee/apps/den-api/src/workers/provisioner.ts` (Render flow customizations)
-- `ee/apps/den-api/src/env.ts` (added render disk config)
-- `ee/apps/den-api/src/routes/admin/index.ts` (added worker admin endpoints)
+**Unverified:** `main`'s disk provisioning has never been runtime-confirmed end-to-end
+(the live workers predate it). Validate by provisioning one fresh worker and confirming it
+boots healthy with `/workspace` mounted — ideally a throwaway before touching real workers.
