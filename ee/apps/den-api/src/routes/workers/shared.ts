@@ -398,13 +398,6 @@ export async function getWorkerTokensAndConnect(worker: WorkerRow) {
   const instance = await getLatestWorkerInstance(worker.id)
   const connect = await resolveConnectUrlFromCandidates(worker.id, instance?.url ?? null, clientToken)
 
-  // Get Daytona signed preview URL for internal proxy use
-  let daytonaUrl: string | null = null
-  if (worker.destination === "cloud") {
-    const { getDaytonaSignedPreviewForProxy } = await import("../../workers/daytona.js")
-    daytonaUrl = await getDaytonaSignedPreviewForProxy(worker.id)
-  }
-
   return {
     tokens: {
       owner: hostToken,
@@ -412,7 +405,6 @@ export async function getWorkerTokensAndConnect(worker: WorkerRow) {
       client: clientToken,
     },
     connect: connect ?? (instance?.url ? { openworkUrl: instance.url, workspaceId: null } : null),
-    daytona: daytonaUrl ? { internalUrl: daytonaUrl } : null,
   }
 }
 

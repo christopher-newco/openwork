@@ -28,24 +28,6 @@ proxy.on('error', (err, req, res) => {
   }
 });
 
-// Intercept responses to rewrite Daytona URLs back to proxy URLs
-proxy.on('proxyRes', (proxyRes, req, res) => {
-  const location = proxyRes.headers['location'];
-  if (location && location.includes('daytonaproxy')) {
-    try {
-      // Parse the Daytona URL and extract path/query
-      const daytonaUrl = new URL(location);
-      const proxyUrl = new URL(`https://${req.headers.host}`);
-      proxyUrl.pathname = daytonaUrl.pathname;
-      proxyUrl.search = daytonaUrl.search;
-      proxyRes.headers['location'] = proxyUrl.toString();
-      console.log('[proxy] Rewrote redirect:', { from: location, to: proxyRes.headers['location'] });
-    } catch (e) {
-      console.error('[proxy] Failed to rewrite redirect:', e.message);
-    }
-  }
-});
-
 async function getWorkspaceConfig(sessionToken, cookieName = 'den.session') {
   try {
     console.log(`[getWorkspaceConfig] Fetching workers from ${DEN_API_BASE}/v1/workers`);
@@ -96,11 +78,10 @@ async function getWorkspaceConfig(sessionToken, cookieName = 'den.session') {
     }
 
     const tokensData = await tokensResponse.json();
-    // Prefer Daytona internal URL for proxy (avoids proxy loop), fallback to public URL
-    const instanceUrl = tokensData?.daytona?.internalUrl || tokensData?.connect?.openworkUrl || tokensData?.worker?.instance?.url;
+    const instanceUrl = tokensData?.connect?.openworkUrl || tokensData?.worker?.instance?.url;
     const clientToken = tokensData?.tokens?.client;
 
-    console.log(`[getWorkspaceConfig] Instance URL: ${instanceUrl}, has token: ${!!clientToken}, isDaytona: ${!!tokensData?.daytona?.internalUrl}`);
+    console.log(`[getWorkspaceConfig] Instance URL: ${instanceUrl}, has token: ${!!clientToken}`);
 
     if (!instanceUrl || !clientToken) {
       console.error('[getWorkspaceConfig] Missing instanceUrl or clientToken');
@@ -185,9 +166,9 @@ app.prepare().then(() => {
         return;
       }
 
-      // Add auth header for Daytona
+      // Add auth header for worker
       req.headers['authorization'] = `Bearer ${config.token}`;
-      delete req.headers['cookie']; // Don't forward session cookie to Daytona
+      delete req.headers['cookie']; // Don't forward session cookie to worker
 
       console.log(`[proxy] Proxying ${req.method} ${req.url} -> ${config.target}${req.url}`);
 
