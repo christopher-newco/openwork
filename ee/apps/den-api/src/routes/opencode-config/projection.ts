@@ -33,6 +33,24 @@ function asRecord(value: unknown): Record<string, unknown> {
     : {}
 }
 
+// opencode's config `Model` schema is a strict subset of the models.dev shape den
+// stores. Notably it types `experimental` as a boolean while models.dev uses an
+// object (`{modes:{...}}`), and den also carries extra keys (last_updated,
+// open_weights, knowledge). Passing those through fails opencode's config decode
+// (config-load 500). Keep only the fields opencode's Model schema accepts.
+const OPENCODE_MODEL_KEYS = new Set([
+  "id", "name", "family", "release_date", "attachment", "reasoning", "temperature",
+  "tool_call", "interleaved", "cost", "limit", "modalities", "status", "provider",
+  "options", "headers", "variants",
+])
+function pickOpencodeModelFields(cfg: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(cfg)) {
+    if (OPENCODE_MODEL_KEYS.has(k)) out[k] = v
+  }
+  return out
+}
+
 /**
  * Project the org's providers into an opencode config document.
  * Pure and dependency-free: callers pass already-fetched rows (with the key
@@ -61,7 +79,7 @@ export function projectOrgProvidersToOpencodeConfig(
 
     const models: Record<string, Record<string, unknown>> = {}
     for (const m of p.models) {
-      models[m.id] = { name: m.name, ...asRecord(m.config) }
+      models[m.id] = { name: m.name, ...pickOpencodeModelFields(asRecord(m.config)) }
     }
 
     provider[key] = {
