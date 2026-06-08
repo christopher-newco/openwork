@@ -363,15 +363,18 @@ async function mintOpencodeConfigKey(workerId: WorkerId): Promise<string | undef
       issuer = (await findMember(eq(MemberTable.role, "owner")))[0]
     }
     if (!issuer) return undefined
+    // MemberTable.userId is nullable (invited-but-unjoined members); an issuer needs a real user.
+    const issuerUserId = issuer.userId
+    if (!issuerUserId) return undefined
 
     const created = await auth.api.createApiKey({
       body: {
-        userId: issuer.userId,
+        userId: issuerUserId,
         name: OPENCODE_CONFIG_KEY_NAME(workerId),
         metadata: buildOrganizationApiKeyMetadata({
           organizationId,
           orgMembershipId: issuer.id,
-          issuedByUserId: issuer.userId,
+          issuedByUserId: issuerUserId,
           issuedByOrgMembershipId: issuer.id,
         }),
         rateLimitEnabled: true,
