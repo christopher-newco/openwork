@@ -43,20 +43,22 @@ printf '%s\n' "- host token: $OPENWORK_HOST_TOKEN"
 printf '%s\n' "- health: curl http://$OPENWORK_CONNECT_HOST:$OPENWORK_PORT/health"
 printf '%s\n' "- auth test: curl -H \"Authorization: Bearer $OPENWORK_TOKEN\" http://$OPENWORK_CONNECT_HOST:$OPENWORK_PORT/workspaces"
 
-exec openwork serve \
+# Run openwork-server DIRECTLY instead of the `openwork serve` orchestrator.
+# The orchestrator (0.15.x) freezes at its opencode health-gate in this headless
+# container — opencode comes up on 127.0.0.1 but the gate never returns, so the
+# orchestrator never starts openwork-server and nothing binds 0.0.0.0 (Render's
+# port scan then times out). openwork-server is self-sufficient: it binds its
+# HTTP server immediately (no blocking gate) and, with OPENWORK_MANAGE_OPENCODE=1,
+# spawns and manages its own opencode. Tokens/workspace come from OPENWORK_* env.
+export OPENWORK_MANAGE_OPENCODE=1
+export OPENWORK_OPENCODE_BIN="${OPENWORK_OPENCODE_BIN:-/usr/local/bin/opencode}"
+
+exec openwork-server \
+  --host 0.0.0.0 \
+  --port "$OPENWORK_PORT" \
   --workspace "$OPENWORK_WORKSPACE" \
-  --remote-access \
-  --openwork-port "$OPENWORK_PORT" \
-  --opencode-host 127.0.0.1 \
-  --opencode-port "$OPENWORK_OPENCODE_PORT" \
-  --openwork-token "$OPENWORK_TOKEN" \
-  --openwork-host-token "$OPENWORK_HOST_TOKEN" \
+  --token "$OPENWORK_TOKEN" \
+  --host-token "$OPENWORK_HOST_TOKEN" \
   --approval "$OPENWORK_APPROVAL_MODE" \
   --cors "$OPENWORK_CORS_ORIGINS" \
-  --connect-host "$OPENWORK_CONNECT_HOST" \
-  --allow-external \
-  --sidecar-source external \
-  --opencode-source external \
-  --openwork-server-bin /usr/local/bin/openwork-server \
-  --opencode-bin /usr/local/bin/opencode \
-  --no-opencode-router
+  --verbose
