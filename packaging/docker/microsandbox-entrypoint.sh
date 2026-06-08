@@ -53,6 +53,24 @@ printf '%s\n' "- auth test: curl -H \"Authorization: Bearer $OPENWORK_TOKEN\" ht
 export OPENWORK_MANAGE_OPENCODE=1
 export OPENWORK_OPENCODE_BIN="${OPENWORK_OPENCODE_BIN:-/usr/local/bin/opencode}"
 
+# --- opencode org-config inheritance (native .well-known/opencode) ---
+# When provisioned with an org-scoped config key, seed opencode's auth.json with
+# a `wellknown` entry pointing at den-api. opencode then fetches the org's model
+# catalog ({config:{provider}}) on its own and merges it natively -- the org's
+# providers/models appear in the worker with no per-workspace plumbing.
+SOAPBOX_DEN_API_URL="${SOAPBOX_DEN_API_URL:-https://api.admin.soapbox.build}"
+if [ -n "${SOAPBOX_OPENCODE_CONFIG_KEY:-}" ]; then
+  OPENCODE_DATA_DIR="$XDG_DATA_HOME/opencode"
+  AUTH_FILE="$OPENCODE_DATA_DIR/auth.json"
+  mkdir -p "$OPENCODE_DATA_DIR"
+  printf '{"%s":{"type":"wellknown","key":"SOAPBOX_ORG_TOKEN","token":"%s"}}\n' \
+    "$SOAPBOX_DEN_API_URL" "$SOAPBOX_OPENCODE_CONFIG_KEY" > "$AUTH_FILE"
+  chmod 600 "$AUTH_FILE"
+  printf '%s\n' "- opencode org-config: wellknown seeded for $SOAPBOX_DEN_API_URL"
+else
+  printf '%s\n' "- opencode org-config: SOAPBOX_OPENCODE_CONFIG_KEY unset, skipping seed"
+fi
+
 exec openwork-server \
   --host 0.0.0.0 \
   --port "$OPENWORK_PORT" \
