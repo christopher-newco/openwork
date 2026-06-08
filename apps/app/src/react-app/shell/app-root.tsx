@@ -319,15 +319,24 @@ export function AppRoot() {
                   </DevProfiler>
                 }
               />
-              {/* Default + fallback: land on the session view or connect for predefined worker. */}
+              {/* Bare /workspace is the canonical entry point: connect to the
+                  predefined worker (which lands on /session), or go straight to
+                  the session view when there's no predefined worker. */}
               <Route
-                path="/"
-                element={<Navigate to={PREDEFINED_WORKER_ID ? "/connect" : "/session"} replace />}
+                path="/workspace"
+                element={
+                  PREDEFINED_WORKER_ID ? (
+                    <DevProfiler id="PredefinedWorkerConnect">
+                      <PredefinedWorkerConnect />
+                    </DevProfiler>
+                  ) : (
+                    <Navigate to="/session" replace />
+                  )
+                }
               />
-              <Route
-                path="*"
-                element={<Navigate to={PREDEFINED_WORKER_ID ? "/connect" : "/session"} replace />}
-              />
+              {/* Default + fallback: app.soapbox.build → /workspace. */}
+              <Route path="/" element={<Navigate to="/workspace" replace />} />
+              <Route path="*" element={<Navigate to="/workspace" replace />} />
             </Routes>
           </DenSigninGate>
         </OpenworkControlProvider>

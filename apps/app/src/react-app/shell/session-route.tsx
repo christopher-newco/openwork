@@ -1455,11 +1455,12 @@ export function SessionRoute() {
     if (workspaces.length > 0) return;
     if (local.prefs.hasCompletedOnboarding) return;
     // Cloud web with a predefined worker: never show the local-folder /welcome
-    // screen. The worker provides the workspace — if the list is momentarily
-    // empty (before the remote workspace materializes), go back through the
-    // connect flow instead of the welcome/pick-folder page.
+    // screen, and do NOT bounce back to /connect — that creates a
+    // /connect→/session→/connect flicker loop while the remote workspace is
+    // still materializing. Stay on /session and let the connect flow's
+    // createRemoteWorkspace populate the list; this effect re-runs when
+    // workspaces.length changes.
     if (PREDEFINED_WORKER_ID) {
-      navigate("/connect", { replace: true });
       return;
     }
     navigate("/welcome", { replace: true });
