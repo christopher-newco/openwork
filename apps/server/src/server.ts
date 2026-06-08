@@ -1051,6 +1051,10 @@ function withCors(response: Response, request: Request, config: ServerConfig) {
     "Authorization, Content-Type, X-OpenWork-Host-Token, X-OpenWork-Client-Id, X-OpenCode-Directory, X-Opencode-Directory, x-opencode-directory",
   );
   headers.set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+  // Cache the CORS preflight so the browser doesn't send an OPTIONS before every
+  // single request. Cross-origin (app.soapbox.build → worker) was paying a full
+  // preflight round-trip per call (~2.6x latency); 10 minutes is plenty.
+  headers.set("Access-Control-Max-Age", "600");
   headers.set("Vary", "Origin");
   return new Response(response.body, { status: response.status, headers });
 }
