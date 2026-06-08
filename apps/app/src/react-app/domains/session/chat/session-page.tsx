@@ -2,7 +2,8 @@
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePanelRef } from "react-resizable-panels";
-import { Columns2, FileText, Globe, Mic2, Settings2, X, Zap } from "lucide-react";
+import { Columns2, FileText, FolderOpen, Globe, Mic2, Settings2, X, Zap } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 import { t } from "../../../../i18n";
 import { OPENWORK_EXTENSION_CATALOG } from "../../../../app/constants";
@@ -256,6 +257,7 @@ function controlStringArg(args: unknown, key: string) {
 
 export function SessionPage(props: SessionPageProps) {
   const { config: shellConfig } = useShellConfig();
+  const navigate = useNavigate();
   const sidebarOpen = useUiStateStore((state) => state.sidebarOpen);
   const setSidebarOpen = useUiStateStore((state) => state.setSidebarOpen);
   const sessionSidePanel = useUiStateStore((state) => (
@@ -1218,6 +1220,16 @@ export function SessionPage(props: SessionPageProps) {
                   {artifactTargetCount > 9 ? "9+" : artifactTargetCount}
                 </span>
               ) : null}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="rounded-xl transition-colors hover:bg-muted hover:text-foreground"
+              onClick={() => navigate("/files")}
+              title="Files"
+              aria-label="Files"
+            >
+              <FolderOpen size={17} />
             </Button>
             <Button
               variant="ghost"
