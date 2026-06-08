@@ -211,6 +211,110 @@ export function registerAdminRoutes<T extends { Variables: AuthContextVariables 
     },
   )
 
+  app.post(
+    "/v1/admin/add-org-member",
+    describeRoute({
+      tags: ["Admin"],
+      summary: "Add a user to an organization",
+      description:
+        "Adds the user with the given email to an organization as a member (default role owner). Defaults to the only organization when organizationId is omitted. Admin only.",
+      responses: {
+        200: jsonResponse(
+          "Membership ensured.",
+          z.object({
+            message: z.string(),
+            userId: z.string(),
+            organizationId: z.string(),
+            role: z.string(),
+          }),
+        ),
+        400: jsonResponse("Invalid request.", invalidRequestSchema),
+        401: jsonResponse("Must be authenticated.", unauthorizedSchema),
+        404: jsonResponse("User or organization not found.", invalidRequestSchema),
+      },
+    }),
+    requireAdminMiddleware,
+    async (c) => {
+      const { MemberTable, OrganizationTable } = await import("@openwork-ee/den-db/schema")
+      const { createDenTypeId } = await import("@openwork-ee/utils/typeid")
+      const { ensureUserOrgAccess } = await import("../../orgs.js")
+
+      let body: { email?: string; organizationId?: string; role?: string }
+      try {
+        body = await c.req.json()
+      } catch {
+        return c.json({ error: "invalid_json" }, 400)
+      }
+
+      const email = (body.email ?? "").toLowerCase().trim()
+      if (!email) {
+        return c.json({ error: "email_required" }, 400)
+      }
+      const role = body.role === "member" ? "member" : "owner"
+
+      // Resolve the user by email.
+      const [userRow] = await db
+        .select({ id: AuthUserTable.id })
+        .from(AuthUserTable)
+        .where(eq(AuthUserTable.email, email))
+        .limit(1)
+      if (!userRow) {
+        return c.json(
+          { error: "user_not_found", message: `No user with email ${email}. They must sign in once first.` },
+          404,
+        )
+      }
+
+      // Resolve the org: explicit id, or the only org if there's exactly one.
+      let organizationId = body.organizationId?.trim() || ""
+      if (!organizationId) {
+        const orgs = await db.select({ id: OrganizationTable.id }).from(OrganizationTable).limit(2)
+        if (orgs.length === 0) {
+          return c.json({ error: "no_organizations" }, 404)
+        }
+        if (orgs.length > 1) {
+          return c.json({ error: "organization_id_required", message: "Multiple orgs exist; specify organizationId." }, 400)
+        }
+        organizationId = orgs[0].id
+      } else {
+        const [org] = await db
+          .select({ id: OrganizationTable.id })
+          .from(OrganizationTable)
+          .where(eq(OrganizationTable.id, organizationId))
+          .limit(1)
+        if (!org) {
+          return c.json({ error: "organization_not_found" }, 404)
+        }
+      }
+
+      // Upsert the membership (idempotent on the (organization_id, user_id) unique index).
+      await db
+        .insert(MemberTable)
+        .values({
+          id: createDenTypeId("member"),
+          organizationId,
+          userId: userRow.id,
+          role,
+        })
+        .onDuplicateKeyUpdate({
+          set: {
+            role,
+            removedAt: sql`NULL`,
+          },
+        })
+
+      // Initialize the org's dynamic roles for this user (also a no-op safety net).
+      await ensureUserOrgAccess({ userId: userRow.id })
+
+      return c.json({
+        message: `${email} is now a ${role} of ${organizationId}`,
+        userId: userRow.id,
+        organizationId,
+        role,
+      })
+    },
+  )
+
   app.get(
     "/v1/admin/overview",
     describeRoute({
