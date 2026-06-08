@@ -19,6 +19,7 @@ import { AppMenuProvider } from "./app-menu";
 import { OpenworkControlProvider, OpenworkRouteControlActions } from "./control/control-provider";
 import { SessionRoute } from "./session-route";
 import { SettingsRoute } from "./settings-route";
+import { FileBrowserPage } from "./file-browser-page";
 import { ShellConfigProvider } from "./shell-config";
 import { WelcomeRoute } from "./welcome-route";
 
@@ -335,6 +336,14 @@ export function AppRoot() {
                 }
               />
               {/* Default + fallback: app.soapbox.build → /workspace. */}
+              <Route
+                path="/files"
+                element={
+                  <DevProfiler id="FileBrowser">
+                    <FileBrowserPage />
+                  </DevProfiler>
+                }
+              />
               <Route path="/" element={<Navigate to="/workspace" replace />} />
               <Route path="*" element={<Navigate to="/workspace" replace />} />
             </Routes>

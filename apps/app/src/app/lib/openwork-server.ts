@@ -1508,6 +1508,17 @@ export function createOpenworkServerClient(options: { baseUrl: string; token?: s
         { token, hostToken },
       ),
 
+    listWorkspaceFiles: (workspaceId: string, path?: string) =>
+      requestJson<{
+        ok: boolean;
+        path: string;
+        entries: Array<{ name: string; path: string; kind: "dir" | "file"; size: number; updatedAt: number }>;
+      }>(
+        baseUrl,
+        `/workspace/${encodeURIComponent(workspaceId)}/files/list${path ? `?path=${encodeURIComponent(path)}` : ""}`,
+        { token, hostToken },
+      ),
+
     writeWorkspaceFile: (
       workspaceId: string,
       payload: { path: string; content: string; baseUpdatedAt?: number | null; force?: boolean },
