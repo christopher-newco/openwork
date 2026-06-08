@@ -13,6 +13,7 @@ import {
 import { workspaceBootstrap } from "@/app/lib/desktop";
 import { isDesktopRuntime } from "@/app/utils";
 import { isWebDeployment } from "@/app/lib/openwork-deployment";
+import { writeOpenworkServerSettings } from "@/app/lib/openwork-server";
 import {
   Page,
   PageBackground,
@@ -185,8 +186,29 @@ export function PredefinedWorkerConnect() {
     const connectToWorker = async () => {
       try {
         if (!isDesktopRuntime()) {
-          // Web deployment - just navigate to session with worker info in localStorage
-          // The session route will pick it up
+          // Web deployment: point the openwork-server client at the WORKER, not
+          // the app origin. resolveOpenworkConnection() reads the server-URL
+          // override (openwork.server.*) — without this the session route builds
+          // the client with baseUrl = app origin and calls
+          // app.soapbox.build/opencode/... instead of the worker. tokens.openworkUrl
+          // is the workspace URL (…/w/<id>); the server base is its origin.
+          const openworkUrl = tokens.openworkUrl ?? "";
+          const ownerToken = tokens.ownerToken ?? "";
+          const serverBaseUrl = (() => {
+            try {
+              return new URL(openworkUrl).origin;
+            } catch {
+              return openworkUrl.replace(/\/w\/.*$/, "");
+            }
+          })();
+          writeOpenworkServerSettings({
+            urlOverride: serverBaseUrl,
+            token: ownerToken,
+            hostToken: tokens.hostToken ?? undefined,
+            remoteAccessEnabled: true,
+          });
+          // Also keep the predefined-worker hint for the session route's
+          // auto-provision path.
           localStorage.setItem("openwork.predefinedWorker", JSON.stringify({
             workerId: worker.workerId,
             workerName: worker.workerName,
