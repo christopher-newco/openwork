@@ -193,7 +193,11 @@ export function PredefinedWorkerConnect() {
           // app.soapbox.build/opencode/... instead of the worker. tokens.openworkUrl
           // is the workspace URL (…/w/<id>); the server base is its origin.
           const openworkUrl = tokens.openworkUrl ?? "";
-          const ownerToken = tokens.ownerToken ?? "";
+          // The openwork-server's client-scoped routes (/workspaces, opencode
+          // proxy, sessions) require the CLIENT token; the owner/host tokens are
+          // rejected (401) on those routes. Use client for the Bearer token and
+          // host for the host-token header. Fall back to owner only if no client.
+          const clientToken = tokens.clientToken ?? tokens.ownerToken ?? "";
           const serverBaseUrl = (() => {
             try {
               return new URL(openworkUrl).origin;
@@ -203,7 +207,7 @@ export function PredefinedWorkerConnect() {
           })();
           writeOpenworkServerSettings({
             urlOverride: serverBaseUrl,
-            token: ownerToken,
+            token: clientToken,
             hostToken: tokens.hostToken ?? undefined,
             remoteAccessEnabled: true,
           });
