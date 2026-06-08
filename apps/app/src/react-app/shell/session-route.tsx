@@ -23,6 +23,7 @@ import { useSessionManagementStore as sessionManagementStore } from "@/react-app
 import {
   buildOpenworkWorkspaceBaseUrl,
   createOpenworkServerClient,
+  writeOpenworkServerSettings,
   readOpenworkServerSettings,
   type OpenworkServerClient,
   type OpenworkWorkspaceInfo,
@@ -139,7 +140,7 @@ import { saveSessionDraft } from "@/react-app/domains/session/sync/draft-store";
 import { useControlAction, type OpenworkControlAction } from "./control/control-provider";
 import { useReactRenderWatchdog } from "./react-render-watchdog";
 
-import { readDenSettings, PREDEFINED_WORKER_ID } from "@/app/lib/den";
+import { readDenSettings, PREDEFINED_WORKER_ID, createDenClient } from "@/app/lib/den";
 import { denSessionUpdatedEvent } from "@/app/lib/den-session-events";
 
 import { openModelPickerEvent, pendingModelPickerProviderIdsKey } from "./new-providers-toast";
@@ -3174,7 +3175,7 @@ export function SessionRoute() {
         }}
         submitting={createWorkspaceBusy}
         error={createWorkspaceError}
-        onConfirm={(rawName) => {
+        onConfirm={async (rawName) => {
           const safeName = rawName
             .trim()
             .replace(/[/\\]+/g, "-")
@@ -3185,7 +3186,73 @@ export function SessionRoute() {
             setCreateWorkspaceError("Please enter a valid workspace name.");
             return;
           }
-          void handleCreateWorkspace("starter", `/workspace/${safeName}`);
+          setCreateWorkspaceBusy(true);
+          setCreateWorkspaceError(null);
+          try {
+            // Creating a workspace hits a HOST-privileged worker route. The
+            // browser's stored host token can be stale/absent (normal chat/file
+            // work only uses client routes), which 401s the create. Re-fetch a
+            // fresh host token from den-api and re-store it so this — and any
+            // later host op (rename/delete) — works.
+            const settings = readDenSettings();
+            const orgId = settings.activeOrgId ?? "";
+            if (!PREDEFINED_WORKER_ID || !orgId) {
+              throw new Error("Not connected to a workspace yet. Reload and try again.");
+            }
+            const denClient = createDenClient({
+              baseUrl: settings.baseUrl,
+              apiBaseUrl: settings.apiBaseUrl,
+              token: settings.authToken,
+            });
+            const tokens = await denClient.getWorkerTokens(PREDEFINED_WORKER_ID, orgId);
+            const clientToken = tokens.clientToken ?? tokens.ownerToken ?? "";
+            const hostToken = tokens.hostToken ?? "";
+            const openworkUrl = tokens.openworkUrl ?? "";
+            const serverBaseUrl = (() => {
+              try {
+                return new URL(openworkUrl).origin;
+              } catch {
+                return openworkUrl.replace(/\/w\/.*$/, "");
+              }
+            })();
+            if (!serverBaseUrl || !clientToken || !hostToken) {
+              throw new Error("Could not load workspace credentials. Reload and try again.");
+            }
+            writeOpenworkServerSettings({
+              urlOverride: serverBaseUrl,
+              token: clientToken,
+              hostToken,
+              remoteAccessEnabled: true,
+            });
+            const freshClient = createOpenworkServerClient({
+              baseUrl: serverBaseUrl,
+              token: clientToken,
+              hostToken,
+            });
+            const list = await freshClient.createLocalWorkspace({
+              folderPath: `/workspace/${safeName}`,
+              name: safeName,
+              preset: "starter",
+            });
+            const createdId =
+              resolveWorkspaceListSelectedId(list) ||
+              list.workspaces[list.workspaces.length - 1]?.id ||
+              "";
+            if (createdId) {
+              await workspaceSetSelected(createdId).catch(() => undefined);
+            }
+            setCreateWorkspaceOpen(false);
+            await refreshRouteState();
+            if (createdId) {
+              navigateToWorkspaceSession(createdId, null, { replace: true });
+            }
+          } catch (error) {
+            setCreateWorkspaceError(
+              error instanceof Error ? error.message : "Failed to create workspace.",
+            );
+          } finally {
+            setCreateWorkspaceBusy(false);
+          }
         }}
       />
     )}
