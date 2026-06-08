@@ -73,10 +73,10 @@ function AuthCallbackRoute() {
           email: result.user?.email ?? null,
         });
 
-        setStatus("Sign-in successful! Redirecting...");
-        setTimeout(() => {
-          navigate(PREDEFINED_WORKER_ID ? "/connect" : "/session", { replace: true });
-        }, 500);
+        // Navigate immediately — no artificial delay. The next route
+        // (/connect or /session) shows the same "Connecting…" spinner, so the
+        // transition is seamless.
+        navigate(PREDEFINED_WORKER_ID ? "/connect" : "/session", { replace: true });
       })
       .catch((err) => {
         console.error("[auth-callback] Error:", err);
@@ -93,12 +93,12 @@ function AuthCallbackRoute() {
             <div className="h-12 w-12 animate-spin rounded-full border-4 border-gray-200 border-t-blue-600" />
           </div>
           <h2 className="text-center text-xl font-semibold text-gray-900">
-            {error ? "Authentication Error" : "Signing In"}
+            {error ? "Authentication Error" : "Connecting to your workspace"}
           </h2>
           {error ? (
             <p className="text-center text-sm text-red-600">{error}</p>
           ) : (
-            <p className="text-center text-sm text-gray-600">{status}</p>
+            <p className="text-center text-sm text-gray-600">Just a moment…</p>
           )}
         </div>
       </div>
@@ -192,13 +192,13 @@ function DenSigninGate({ children }: DenSigninGateProps) {
         if (settings.authToken?.trim() && settings.activeOrgId?.trim()) {
           // Navigate to connect page if predefined worker is configured
           navigate(PREDEFINED_WORKER_ID ? "/connect" : "/onboarding", { replace: true });
-        } else if (attempts < 10) {
-          // Org not selected yet — retry (max ~5 seconds)
-          setTimeout(check, 500);
+        } else if (attempts < 25) {
+          // Org not selected yet — retry quickly (max ~5 seconds)
+          setTimeout(check, 200);
         }
       };
-      // First check after a short delay for the auth to settle
-      setTimeout(check, 500);
+      // Check immediately — no leading delay; poll fast if the org isn't ready.
+      check();
     };
     window.addEventListener(denSessionUpdatedEvent, handler);
     return () => window.removeEventListener(denSessionUpdatedEvent, handler);

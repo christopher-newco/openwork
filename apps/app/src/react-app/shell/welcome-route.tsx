@@ -24,7 +24,7 @@ import {
 } from "../domains/cloud/openwork-models-promo";
 import { resolveOpenworkConnection } from "./openwork-connection";
 import { buildOpenworkWorkspaceBaseUrl, createOpenworkServerClient } from "../../app/lib/openwork-server";
-import { buildDenAuthUrl, readDenSettings } from "../../app/lib/den";
+import { buildDenAuthUrl, readDenSettings, PREDEFINED_WORKER_ID } from "../../app/lib/den";
 import { writeActiveWorkspaceId, writeLastSessionFor } from "./session-memory";
 import { workspaceSessionRoute } from "./workspace-routes";
 import { ensureDesktopLocalOpenworkConnection } from "./desktop-local-openwork";
@@ -111,6 +111,14 @@ export function WelcomeRoute() {
   const platform = usePlatform();
   const [state, dispatch] = useReducer(welcomeReducer, initialWelcomeState);
   const [manualFolder, setManualFolder] = useState("");
+
+  // Cloud web with a predefined worker should never see the local-folder
+  // welcome screen — send them through the connect flow instead.
+  useEffect(() => {
+    if (PREDEFINED_WORKER_ID) {
+      navigate("/connect", { replace: true });
+    }
+  }, [navigate]);
 
   // If user already completed onboarding, redirect away immediately.
   useEffect(() => {

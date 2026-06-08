@@ -138,7 +138,7 @@ import { saveSessionDraft } from "@/react-app/domains/session/sync/draft-store";
 import { useControlAction, type OpenworkControlAction } from "./control/control-provider";
 import { useReactRenderWatchdog } from "./react-render-watchdog";
 
-import { readDenSettings } from "@/app/lib/den";
+import { readDenSettings, PREDEFINED_WORKER_ID } from "@/app/lib/den";
 import { denSessionUpdatedEvent } from "@/app/lib/den-session-events";
 
 import { openModelPickerEvent, pendingModelPickerProviderIdsKey } from "./new-providers-toast";
@@ -1454,6 +1454,14 @@ export function SessionRoute() {
     if (loading) return;
     if (workspaces.length > 0) return;
     if (local.prefs.hasCompletedOnboarding) return;
+    // Cloud web with a predefined worker: never show the local-folder /welcome
+    // screen. The worker provides the workspace — if the list is momentarily
+    // empty (before the remote workspace materializes), go back through the
+    // connect flow instead of the welcome/pick-folder page.
+    if (PREDEFINED_WORKER_ID) {
+      navigate("/connect", { replace: true });
+      return;
+    }
     navigate("/welcome", { replace: true });
   }, [loading, local.prefs.hasCompletedOnboarding, navigate, workspaces.length]);
 

@@ -36,7 +36,7 @@ export function ConnectScreen() {
           return;
         }
 
-        setStatus("Generating handoff token...");
+        setStatus("Connecting to your workspace…");
 
         // Create desktop handoff grant
         const { response, payload } = await requestJson(
@@ -66,7 +66,7 @@ export function ConnectScreen() {
         appUrl.searchParams.set("denBaseUrl", window.location.origin);
 
         console.log("[connect-screen] Redirecting to app:", appUrl.toString());
-        setStatus("Connecting to workspace...");
+        setStatus("Connecting to your workspace…");
 
         // Redirect to the app, which will exchange the grant and connect to the worker
         window.location.href = appUrl.toString();

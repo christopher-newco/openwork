@@ -251,20 +251,10 @@ export function PredefinedWorkerConnect() {
   ]);
 
   const getStatusMessage = () => {
-    switch (status) {
-      case "loading_worker":
-        return worker?.status === "starting"
-          ? "Your workspace is starting up..."
-          : "Loading workspace...";
-      case "fetching_credentials":
-        return "Fetching connection credentials...";
-      case "connecting":
-        return "Connecting to your workspace...";
-      case "error":
-        return "Connection Error";
-      default:
-        return "Loading...";
-    }
+    // Unified copy so the admin → app → workspace handoff reads as one smooth
+    // "Connecting to your workspace…" load rather than several distinct screens.
+    if (status === "error") return "Connection Error";
+    return "Connecting to your workspace…";
   };
 
   if (status === "no_predefined_worker") {
