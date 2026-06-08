@@ -86,6 +86,10 @@ export function projectOrgProvidersToOpencodeConfig(
       ...template,
       name: typeof template.name === "string" && template.name.length > 0 ? template.name : p.name,
       options,
+      // Restrict opencode to exactly the org-configured models (ZDR curation).
+      // Without a whitelist, a connected provider exposes its entire models.dev
+      // catalog — defeating the curated ZDR model list.
+      whitelist: Object.keys(models),
       models,
     }
   }
