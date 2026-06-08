@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto"
 import { and, asc, desc, eq, isNull } from "@openwork-ee/den-db/drizzle"
 import {
   AuditEventTable,
+  AuthApiKeyTable,
   AuthUserTable,
   DaytonaSandboxTable,
   MemberTable,
@@ -12,6 +13,12 @@ import {
 } from "@openwork-ee/den-db/schema"
 import { createDenTypeId, normalizeDenTypeId } from "@openwork-ee/utils/typeid"
 import { z } from "zod"
+import {
+  buildOrganizationApiKeyMetadata,
+  DEN_API_KEY_RATE_LIMIT_MAX,
+  DEN_API_KEY_RATE_LIMIT_TIME_WINDOW_MS,
+} from "../../api-keys.js"
+import { auth } from "../../auth.js"
 import { requireCloudWorkerAccess } from "../../billing/polar.js"
 import { db } from "../../db.js"
 import { env } from "../../env.js"
@@ -324,20 +331,92 @@ export function toWorkerResponse(row: WorkerRow, userId: string) {
   }
 }
 
+type OrganizationId = typeof MemberTable.$inferSelect.organizationId
+
+// Keyed by worker id so we can find + revoke it on deprovision.
+const OPENCODE_CONFIG_KEY_NAME = (workerId: WorkerId) => `opencode-config:${workerId}`
+
+// Mint an org-scoped den-api key the worker presents (as x-api-key) to inherit
+// the org's opencode model catalog via /.well-known/opencode. Fail-soft: any
+// error returns undefined and the worker provisions without inheritance.
+async function mintOpencodeConfigKey(workerId: WorkerId): Promise<string | undefined> {
+  try {
+    const [worker] = await db
+      .select({ orgId: WorkerTable.org_id, creatorUserId: WorkerTable.created_by_user_id })
+      .from(WorkerTable)
+      .where(eq(WorkerTable.id, workerId))
+      .limit(1)
+    if (!worker) return undefined
+    const organizationId = worker.orgId as unknown as OrganizationId
+
+    // Issuer: the worker's creator if still an org member, else any org owner.
+    const findMember = (extra: ReturnType<typeof eq>) =>
+      db
+        .select({ id: MemberTable.id, userId: MemberTable.userId })
+        .from(MemberTable)
+        .where(and(eq(MemberTable.organizationId, organizationId), extra, isNull(MemberTable.removedAt)))
+        .limit(1)
+    let issuer = worker.creatorUserId
+      ? (await findMember(eq(MemberTable.userId, worker.creatorUserId)))[0]
+      : undefined
+    if (!issuer) {
+      issuer = (await findMember(eq(MemberTable.role, "owner")))[0]
+    }
+    if (!issuer) return undefined
+
+    const created = await auth.api.createApiKey({
+      body: {
+        userId: issuer.userId,
+        name: OPENCODE_CONFIG_KEY_NAME(workerId),
+        metadata: buildOrganizationApiKeyMetadata({
+          organizationId,
+          orgMembershipId: issuer.id,
+          issuedByUserId: issuer.userId,
+          issuedByOrgMembershipId: issuer.id,
+        }),
+        rateLimitEnabled: true,
+        rateLimitMax: DEN_API_KEY_RATE_LIMIT_MAX,
+        rateLimitTimeWindow: DEN_API_KEY_RATE_LIMIT_TIME_WINDOW_MS,
+      },
+    })
+    return created.key
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn(`[workers] opencode-config key mint failed for ${workerId}: ${message}`)
+    return undefined
+  }
+}
+
+// Revoke the worker's opencode-config key on teardown so keys don't orphan.
+async function deleteOpencodeConfigKey(workerId: WorkerId): Promise<void> {
+  try {
+    await db.delete(AuthApiKeyTable).where(eq(AuthApiKeyTable.name, OPENCODE_CONFIG_KEY_NAME(workerId)))
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn(`[workers] opencode-config key cleanup failed for ${workerId}: ${message}`)
+  }
+}
+
 export async function continueCloudProvisioning(input: {
   workerId: WorkerId
   name: string
   hostToken: string
   clientToken: string
   activityToken: string
+  opencodeConfigKey?: string
 }) {
   try {
+    // Mint the org-scoped config key now (unless the caller supplied one) so the
+    // worker inherits the org model catalog via opencode's native well-known config.
+    const opencodeConfigKey =
+      input.opencodeConfigKey ?? (await mintOpencodeConfigKey(input.workerId))
     const provisioned = await provisionWorker({
       workerId: input.workerId,
       name: input.name,
       hostToken: input.hostToken,
       clientToken: input.clientToken,
       activityToken: input.activityToken,
+      opencodeConfigKey,
     })
 
     await db
@@ -426,6 +505,9 @@ export async function deleteWorkerCascade(worker: WorkerRow) {
       console.warn(`[workers] deprovision warning for ${worker.id}: ${message}`)
     }
   }
+
+  // Revoke the worker's org-scoped opencode-config key (best-effort).
+  await deleteOpencodeConfigKey(worker.id)
 
   await db.transaction(async (tx) => {
     await tx.delete(WorkerTokenTable).where(eq(WorkerTokenTable.worker_id, worker.id))

@@ -17,6 +17,11 @@ export type ProvisionInput = {
   hostToken: string
   clientToken: string
   activityToken: string
+  // Org-scoped den-api key for opencode org-config inheritance. When set, it is
+  // injected as SOAPBOX_OPENCODE_CONFIG_KEY so the worker entrypoint seeds
+  // opencode's `wellknown` auth and inherits the org model catalog. Optional:
+  // workers provisioned without it simply skip the wellknown seed.
+  opencodeConfigKey?: string
 }
 
 export type ProvisionedInstance = {
@@ -299,6 +304,11 @@ async function provisionWorkerOnRender(
       { key: "OPENWORK_ORCHESTRATOR_VERSION", value: env.render.workerOrchestratorVersion },
       { key: "OPENWORK_SERVER_VERSION", value: env.render.workerServerVersion },
       { key: "OPENCODE_VERSION", value: env.render.workerOpencodeVersion },
+      // Org-config inheritance: when present, the entrypoint seeds opencode's
+      // `wellknown` auth so opencode pulls the org model catalog from den-api.
+      ...(input.opencodeConfigKey
+        ? [{ key: "SOAPBOX_OPENCODE_CONFIG_KEY", value: input.opencodeConfigKey }]
+        : []),
     ],
     serviceDetails: {
       env: "docker",

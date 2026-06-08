@@ -15,6 +15,7 @@ import { buildOperationId, emptyResponse, htmlResponse, jsonResponse } from "./o
 import { registerAdminRoutes } from "./routes/admin/index.js"
 import { registerAuthRoutes } from "./routes/auth/index.js"
 import { registerMeRoutes } from "./routes/me/index.js"
+import { registerOpencodeConfigRoutes } from "./routes/opencode-config/index.js"
 import { registerOrgRoutes } from "./routes/org/index.js"
 import { registerTelemetryRoutes } from "./routes/telemetry/index.js"
 import { registerVersionRoutes } from "./routes/version/index.js"
@@ -184,6 +185,7 @@ app.get(
 registerAdminRoutes(app)
 registerAuthRoutes(app)
 registerMeRoutes(app)
+registerOpencodeConfigRoutes(app)
 registerOrgRoutes(app)
 registerVersionRoutes(app)
 registerWebhookRoutes(app)
