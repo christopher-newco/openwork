@@ -236,7 +236,7 @@ export function registerAdminRoutes<T extends { Variables: AuthContextVariables 
     requireAdminMiddleware,
     async (c) => {
       const { MemberTable, OrganizationTable } = await import("@openwork-ee/den-db/schema")
-      const { createDenTypeId } = await import("@openwork-ee/utils/typeid")
+      const { createDenTypeId, normalizeDenTypeId } = await import("@openwork-ee/utils/typeid")
       const { ensureUserOrgAccess } = await import("../../orgs.js")
 
       let body: { email?: string; organizationId?: string; role?: string }
@@ -280,19 +280,21 @@ export function registerAdminRoutes<T extends { Variables: AuthContextVariables 
         const [org] = await db
           .select({ id: OrganizationTable.id })
           .from(OrganizationTable)
-          .where(eq(OrganizationTable.id, organizationId))
+          .where(eq(OrganizationTable.id, normalizeDenTypeId("organization", organizationId)))
           .limit(1)
         if (!org) {
           return c.json({ error: "organization_not_found" }, 404)
         }
       }
 
+      const normalizedOrgId = normalizeDenTypeId("organization", organizationId)
+
       // Upsert the membership (idempotent on the (organization_id, user_id) unique index).
       await db
         .insert(MemberTable)
         .values({
           id: createDenTypeId("member"),
-          organizationId,
+          organizationId: normalizedOrgId,
           userId: userRow.id,
           role,
         })
