@@ -286,6 +286,13 @@ async function provisionWorkerOnRender(
       { key: "WORKER_ACTIVITY_BASE_URL", value: "https://api.admin.soapbox.build" },
       // Workspace lives on the persistent disk (mounted at /workspace below).
       { key: "OPENWORK_WORKSPACE", value: "/workspace" },
+      // Bind the openwork-server to 0.0.0.0 so Render's port scan can reach it.
+      // The orchestrator computes its bind host as 0.0.0.0 only when remote
+      // access is enabled, which resolveOpenworkRemoteAccess() turns on for
+      // OPENWORK_HOST=0.0.0.0 (apps/orchestrator/src/cli.ts). The microsandbox
+      // entrypoint passes --remote-access but not --openwork-host, and the
+      // server otherwise defaults to 127.0.0.1 (which Render cannot route to).
+      { key: "OPENWORK_HOST", value: "0.0.0.0" },
       // Build ARGs for Dockerfile.microsandbox — Render auto-translates service
       // env vars into Docker build args, and the entrypoint also reads them at
       // runtime. Pinned versions; bump via env.render.* without code changes.
