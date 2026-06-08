@@ -8,6 +8,7 @@ import { denSettingsChangedEvent, denSessionUpdatedEvent, dispatchDenSessionUpda
 import { useDenAuth } from "../domains/cloud/den-auth-provider";
 import { ForcedSigninPage } from "../domains/cloud/forced-signin-page";
 import { WebSigninPage } from "../domains/cloud/web-signin-page";
+import { isWebDeployment } from "../../app/lib/openwork-deployment";
 import { OrgOnboardingPage } from "../domains/cloud/org-onboarding-page";
 import { PredefinedWorkerConnect } from "../domains/cloud/predefined-worker-connect";
 import { NewProvidersToast } from "./new-providers-toast";
@@ -150,13 +151,18 @@ function DenSigninGate({ children }: DenSigninGateProps) {
 
     const path = location.pathname.toLowerCase();
     const onSignin = path === "/signin" || path.startsWith("/signin/");
+    const onWebSignin = path === "/web-signin" || path.startsWith("/web-signin/");
     const onAuthCallback = path === "/auth-callback" || path.startsWith("/auth-callback/");
     const onOnboarding = path === "/onboarding" || path.startsWith("/onboarding/");
 
     if (requireSignin) {
-      if (!denAuth.isSignedIn && !onSignin && !onAuthCallback) {
-        navigate("/signin", { replace: true });
-      } else if (denAuth.isSignedIn && onSignin) {
+      // Web users sign in via the automatic admin handoff (/web-signin); the
+      // desktop /signin page is a manual grant-paste flow that traps web users
+      // who have lost their local token (e.g. after clearing browser storage).
+      const signinPath = isWebDeployment() ? "/web-signin" : "/signin";
+      if (!denAuth.isSignedIn && !onSignin && !onWebSignin && !onAuthCallback) {
+        navigate(signinPath, { replace: true });
+      } else if (denAuth.isSignedIn && (onSignin || onWebSignin)) {
         // Signed in — route to predefined worker connect if configured, otherwise onboarding
         if (PREDEFINED_WORKER_ID) {
           navigate("/connect", { replace: true });
@@ -164,7 +170,7 @@ function DenSigninGate({ children }: DenSigninGateProps) {
           navigate("/onboarding", { replace: true });
         }
       }
-    } else if (onSignin) {
+    } else if (onSignin || onWebSignin) {
       navigate("/session", { replace: true });
     }
 
