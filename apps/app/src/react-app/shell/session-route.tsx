@@ -94,6 +94,7 @@ import {
 import { firstLineLocalFileParts } from "@/react-app/domains/session/sync/prompt-file-parts";
 import { CreateRemoteWorkspaceModal } from "@/react-app/domains/workspace/create-remote-workspace-modal";
 import { CreateWorkspaceModal } from "@/react-app/domains/workspace/create-workspace-modal";
+import { CreateLocalWorkspaceWebModal } from "@/react-app/domains/workspace/create-local-workspace-web-modal";
 import { createProviderAuthStore, useProviderAuthStoreSnapshot } from "@/react-app/domains/connections/provider-auth/store";
 import { useRemoteAccessRestart } from "@/react-app/domains/workspace/remote-access-restart";
 import { RenameWorkspaceModal } from "@/react-app/domains/workspace/rename-workspace-modal";
@@ -3147,20 +3148,47 @@ export function SessionRoute() {
       onSubscribe={subscribeToOpenWorkModels}
       onContinueWithout={continueWithoutOpenWorkModels}
     />
-    <CreateWorkspaceModal
-      open={createWorkspaceOpen}
-      onClose={() => {
-        setCreateWorkspaceOpen(false);
-        setCreateWorkspaceError(null);
-      }}
-      onConfirm={handleCreateWorkspace}
-      onConfirmRemote={handleCreateRemoteWorkspace}
-      onPickFolder={() => pickDirectory({ title: t("onboarding.authorize_folder") }) as Promise<string | null>}
-      submitting={createWorkspaceBusy}
-      localError={createWorkspaceError}
-      remoteSubmitting={createWorkspaceRemoteBusy}
-      remoteError={createWorkspaceRemoteError}
-    />
+    {isDesktopRuntime() ? (
+      <CreateWorkspaceModal
+        open={createWorkspaceOpen}
+        onClose={() => {
+          setCreateWorkspaceOpen(false);
+          setCreateWorkspaceError(null);
+        }}
+        onConfirm={handleCreateWorkspace}
+        onConfirmRemote={handleCreateRemoteWorkspace}
+        onPickFolder={() => pickDirectory({ title: t("onboarding.authorize_folder") }) as Promise<string | null>}
+        submitting={createWorkspaceBusy}
+        localError={createWorkspaceError}
+        remoteSubmitting={createWorkspaceRemoteBusy}
+        remoteError={createWorkspaceRemoteError}
+      />
+    ) : (
+      // Web: no native folder picker and no remote-server option — just name a
+      // new workspace; the worker creates the folder under its persistent disk.
+      <CreateLocalWorkspaceWebModal
+        open={createWorkspaceOpen}
+        onClose={() => {
+          setCreateWorkspaceOpen(false);
+          setCreateWorkspaceError(null);
+        }}
+        submitting={createWorkspaceBusy}
+        error={createWorkspaceError}
+        onConfirm={(rawName) => {
+          const safeName = rawName
+            .trim()
+            .replace(/[/\\]+/g, "-")
+            .replace(/\.\.+/g, ".")
+            .replace(/^\.+/, "")
+            .trim();
+          if (!safeName) {
+            setCreateWorkspaceError("Please enter a valid workspace name.");
+            return;
+          }
+          void handleCreateWorkspace("starter", `/workspace/${safeName}`);
+        }}
+      />
+    )}
     <CreateRemoteWorkspaceModal
       open={remoteWorkspaceConnectionEditor.workspace !== null}
       onClose={remoteWorkspaceConnectionEditor.close}
