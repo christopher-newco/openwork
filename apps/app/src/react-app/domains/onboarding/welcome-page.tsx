@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ScrollArea, ScrollAreaViewport } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { useShellConfig } from "../../shell/shell-config";
 
 interface BrandIconProps {
   slug: string;
@@ -159,6 +160,7 @@ export function WelcomePage({
   onUseManualFolder,
   showManualFolder,
 }: WelcomePageProps) {
+  const { config: shellConfig } = useShellConfig();
   return (
     <Page className="min-h-screen">
       <PageBackground />
@@ -188,7 +190,7 @@ export function WelcomePage({
                     Choose any folder on your machine to get started.
                   </OnboardingStep>
                   <OnboardingStep number="2" title="Chat">
-                    Describe what you need. OpenWork handles the rest.
+                    Describe what you need. {shellConfig.appName} handles the rest.
                   </OnboardingStep>
                   <OnboardingStep number="3" title="Interact">
                     Review results, approve actions, and iterate.

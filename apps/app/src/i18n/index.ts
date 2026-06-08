@@ -55,6 +55,8 @@ export const pluralSuffix = (locale: Language, count: number): string => {
 /**
  * Translation maps
  */
+import { DEFAULT_SHELL_CONFIG } from "../react-app/shell/shell-config";
+
 const TRANSLATIONS: Record<Language, Record<string, string>> = {
   en,
   ja,
@@ -181,9 +183,15 @@ export const t = (
   const result = lookupEntry(loc, lookupKey);
   if (result === null) return key;
 
-  if (!params) return result;
+  // White-label brand injection: resolve the `{appName}` token from the single
+  // configured app name so strings need no per-client edits. Applied before
+  // explicit params and regardless of whether params were passed.
+  let out = result.includes("{appName}")
+    ? result.replace(/\{appName\}/g, DEFAULT_SHELL_CONFIG.appName)
+    : result;
 
-  let out = result;
+  if (!params) return out;
+
   for (const [k, v] of Object.entries(params)) {
     if (k === "lng") continue;
     out = out.replace(`{${k}}`, String(v));
