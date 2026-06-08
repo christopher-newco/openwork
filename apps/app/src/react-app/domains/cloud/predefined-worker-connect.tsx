@@ -33,6 +33,13 @@ type ConnectStatus =
   | "error"
   | "no_predefined_worker";
 
+// Den reports a connectable cloud worker as "healthy" (the terminal provisioning
+// state); "ready" is accepted too for forward-compat. Other states
+// (provisioning/failed/unknown) are not yet connectable.
+function isWorkerConnectable(status: string | null | undefined): boolean {
+  return status === "healthy" || status === "ready";
+}
+
 /**
  * Auto-connects to a predefined worker when VITE_PREDEFINED_WORKER_ID is set.
  *
@@ -118,7 +125,7 @@ export function PredefinedWorkerConnect() {
     isPending: isLoadingTokens,
   } = useQuery({
     queryKey: ["den-worker-tokens", worker?.workerId, orgId, settings.baseUrl],
-    enabled: Boolean(worker && worker.status === "ready" && orgId && worker.workerId),
+    enabled: Boolean(worker && isWorkerConnectable(worker.status) && orgId && worker.workerId),
     queryFn: () => denClient.getWorkerTokens(worker!.workerId, orgId),
   });
 
@@ -156,7 +163,7 @@ export function PredefinedWorkerConnect() {
       return;
     }
 
-    if (worker.status !== "ready") {
+    if (!isWorkerConnectable(worker.status)) {
       setStatus("loading_worker");
       return;
     }
