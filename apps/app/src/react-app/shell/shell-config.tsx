@@ -60,7 +60,9 @@ function readShellConfig(): ShellConfig {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_SHELL_CONFIG;
     const parsed = JSON.parse(raw);
-    return { ...DEFAULT_SHELL_CONFIG, ...parsed };
+    // appName is not user-editable, so the build default always wins over any
+    // stale stored value (otherwise a rebrand never reaches existing browsers).
+    return { ...DEFAULT_SHELL_CONFIG, ...parsed, appName: DEFAULT_SHELL_CONFIG.appName };
   } catch {
     return DEFAULT_SHELL_CONFIG;
   }
