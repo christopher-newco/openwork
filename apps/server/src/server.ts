@@ -3603,6 +3603,42 @@ function createRoutes(
     });
   });
 
+  // Directory listing for the web file browser. Sandboxed to the workspace;
+  // hides dotfiles/dirs. Empty/absent path lists the workspace root.
+  addRoute(routes, "GET", "/workspace/:id/files/list", "client", async (ctx) => {
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const requested = (ctx.url.searchParams.get("path") ?? "").trim();
+    const relativePath = requested
+      ? normalizeWorkspaceRelativePath(requested, { allowSubdirs: true })
+      : "";
+    const absPath = relativePath ? resolveSafeChildPath(workspace.path, relativePath) : workspace.path;
+    if (!(await exists(absPath))) {
+      throw new ApiError(404, "dir_not_found", "Directory not found");
+    }
+    const dirInfo = await stat(absPath);
+    if (!dirInfo.isDirectory()) {
+      throw new ApiError(400, "not_a_directory", "Path is not a directory");
+    }
+    const dirents = await readdir(absPath, { withFileTypes: true });
+    const entries: Array<{ name: string; path: string; kind: "dir" | "file"; size: number; updatedAt: number }> = [];
+    for (const dirent of dirents) {
+      if (dirent.name.startsWith(".")) continue;
+      const childRel = relativePath ? `${relativePath}/${dirent.name}` : dirent.name;
+      let size = 0;
+      let updatedAt = 0;
+      try {
+        const childInfo = await stat(resolveSafeChildPath(workspace.path, childRel));
+        size = childInfo.size;
+        updatedAt = childInfo.mtimeMs;
+      } catch {
+        // unstattable entry (broken symlink etc.) — list it with zeros
+      }
+      entries.push({ name: dirent.name, path: childRel, kind: dirent.isDirectory() ? "dir" : "file", size, updatedAt });
+    }
+    entries.sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === "dir" ? -1 : 1));
+    return jsonResponse({ ok: true, path: relativePath, entries });
+  });
+
   addRoute(routes, "GET", "/workspace/:id/files/raw", "client", async (ctx) => {
     const workspace = await resolveWorkspace(config, ctx.params.id);
     const requested = (ctx.url.searchParams.get("path") ?? "").trim();
