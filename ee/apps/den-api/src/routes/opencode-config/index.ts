@@ -66,10 +66,12 @@ export function registerOpencodeConfigRoutes<T extends { Variables: AuthContextV
   // Step 1 — discovery. opencode sends NO auth on this hop, so return only a
   // pointer to the authenticated config endpoint; no org data here.
   app.get("/.well-known/opencode", (c) => {
-    const origin = new URL(c.req.url).origin
+    // Force https: behind Railway's TLS-terminating proxy c.req.url is http,
+    // and opencode must fetch the authenticated config over https.
+    const base = `https://${new URL(c.req.url).host}`
     return c.json({
       remote_config: {
-        url: `${origin}/v1/opencode-config`,
+        url: `${base}/v1/opencode-config`,
         // {env:...} is substituted by opencode from the auth.json `wellknown`
         // token, keyed by the entry's `key` (SOAPBOX_ORG_TOKEN).
         headers: { "x-api-key": "{env:SOAPBOX_ORG_TOKEN}" },
