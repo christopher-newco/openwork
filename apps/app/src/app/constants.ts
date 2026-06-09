@@ -1,4 +1,5 @@
 import type { ModelRef, SuggestedPlugin } from "./types";
+import { isDesktopRuntime } from "./utils";
 import { t } from "../i18n";
 import { readDenBootstrapConfig } from "./lib/den";
 import {
@@ -175,4 +176,12 @@ export const MCP_QUICK_CONNECT: McpDirectoryInfo[] = [
   ...BUILT_IN_OPENWORK_EXTENSION_MANIFESTS.map(extensionManifestToDirectoryInfo),
 ];
 
-export const OPENWORK_EXTENSION_CATALOG = MCP_QUICK_CONNECT.filter((entry) => entry.kind === "extension");
+export const OPENWORK_EXTENSION_CATALOG = MCP_QUICK_CONNECT.filter((entry) => {
+  if (entry.kind !== "extension") return false;
+  // Extensions whose manifest lists only desktop platforms are hidden on web.
+  const platforms = entry.extensionManifest?.platform;
+  if (Array.isArray(platforms) && platforms.length > 0 && !platforms.includes("web")) {
+    if (!isDesktopRuntime()) return false;
+  }
+  return true;
+});
