@@ -514,7 +514,7 @@ export function SidePanel({
             ) : null}
           </div>
         </div>
-        {!activeTab ? (
+        {!activeTab && isBrowserAvailable ? (
           <PanelEmpty />
         ) : null}
         {activeTab?.type === "browser" || (!isBrowserAvailable && typeof window !== "undefined") ? (
