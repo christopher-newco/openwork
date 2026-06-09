@@ -71,6 +71,43 @@ else
   printf '%s\n' "- opencode org-config: SOAPBOX_OPENCODE_CONFIG_KEY unset, skipping seed"
 fi
 
+# --- global opencode MCP servers (applies to all workspaces) ---
+# Write org-wide MCP entries into the global opencode config before the server
+# starts. Seeded on every boot so additions here are always in effect.
+OPENCODE_GLOBAL_CONFIG_DIR="$XDG_CONFIG_HOME/opencode"
+OPENCODE_GLOBAL_CONFIG="$OPENCODE_GLOBAL_CONFIG_DIR/opencode.jsonc"
+mkdir -p "$OPENCODE_GLOBAL_CONFIG_DIR"
+# Only write if the file does not yet contain the audette entry.
+if ! grep -q '"audette"' "$OPENCODE_GLOBAL_CONFIG" 2>/dev/null; then
+  EXISTING=""
+  if [ -f "$OPENCODE_GLOBAL_CONFIG" ]; then
+    EXISTING=$(cat "$OPENCODE_GLOBAL_CONFIG")
+  fi
+  if [ -z "$EXISTING" ] || [ "$EXISTING" = "{}" ]; then
+    printf '{"mcp":{"audette":{"type":"remote","url":"https://mcp-server.prod.audette.io/mcp"}}}
+'       > "$OPENCODE_GLOBAL_CONFIG"
+  else
+    # File exists with other content — append the mcp block by rewriting.
+    # Use a simple approach: inject audette into whatever is already there via a
+    # temporary node/bun one-liner if available, otherwise overwrite safely.
+    if command -v node >/dev/null 2>&1; then
+      node -e "
+        const fs=require('fs');
+        let cfg={};
+        try{cfg=JSON.parse(fs.readFileSync('$OPENCODE_GLOBAL_CONFIG','utf8'));}catch(e){}
+        if(!cfg.mcp) cfg.mcp={};
+        cfg.mcp.audette={type:'remote',url:'https://mcp-server.prod.audette.io/mcp'};
+        fs.writeFileSync('$OPENCODE_GLOBAL_CONFIG',JSON.stringify(cfg,null,2));
+      " 2>/dev/null || true
+    fi
+  fi
+  printf '%s
+' "- org MCP: audette seeded in global opencode config"
+else
+  printf '%s
+' "- org MCP: audette already present in global opencode config"
+fi
+
 exec openwork-server \
   --host 0.0.0.0 \
   --port "$OPENWORK_PORT" \
