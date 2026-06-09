@@ -71,6 +71,33 @@ else
   printf '%s\n' "- opencode org-config: SOAPBOX_OPENCODE_CONFIG_KEY unset, skipping seed"
 fi
 
+# --- built-in browser (Chromium via Xvfb + x11vnc for noVNC streaming) ---
+# Xvfb provides a virtual X display; Chromium runs headful on it for full CDP
+# and interactive control; x11vnc serves the display over VNC (TCP 5900) which
+# the openwork-server proxies as a WebSocket for the in-app browser panel.
+export DISPLAY=:99
+Xvfb :99 -screen 0 1280x800x24 -ac +extension GLX +render -noreset &
+XVFB_PID=$!
+# Wait briefly for Xvfb to be ready
+sleep 1
+# Start Chromium in non-headless mode (needed for xvfb capture)
+chromium \
+  --no-sandbox \
+  --disable-gpu \
+  --disable-dev-shm-usage \
+  --disable-extensions \
+  --disable-notifications \
+  --no-first-run \
+  --no-default-browser-check \
+  --remote-debugging-port=9222 \
+  --remote-debugging-address=127.0.0.1 \
+  --window-size=1280,800 \
+  --window-position=0,0 \
+  about:blank &
+# Start x11vnc: listen on localhost only, no password, share across connections
+x11vnc -display :99 -nopw -listen 127.0.0.1 -rfbport 5900 -forever -shared -quiet &
+printf '%s\n' "- browser: Xvfb :99 + Chromium + x11vnc ready"
+
 # --- global opencode MCP servers (applies to all workspaces) ---
 # Write org-wide MCP entries into the global opencode config before the server
 # starts. Seeded on every boot so additions here are always in effect.
