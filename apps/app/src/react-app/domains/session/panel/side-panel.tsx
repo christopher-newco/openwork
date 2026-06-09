@@ -238,7 +238,7 @@ function BrowserPanelContent({
           }
         }
       } catch { /* ignore */ }
-      if (active) setTimeout(poll, 2000);
+      if (active) setTimeout(poll, 500);
     };
     void poll();
     return () => { active = false; };

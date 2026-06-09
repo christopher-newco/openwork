@@ -440,7 +440,26 @@ export function SessionPage(props: SessionPageProps) {
       }
     }
     toggleCurrentSidePanel("panel");
-  }, [panelRailActive, sessionPanelState.tabs, toggleCurrentSidePanel]);
+  }, [panelRailActive, sessionPanelState.tabs, toggleCurrentSidePanel])
+
+  // Intercept external link clicks on web — navigate the browser panel instead of opening a new tab
+  const handleLinkClick = useCallback((e: React.MouseEvent) => {
+    if (isElectronRuntime()) return;
+    const anchor = (e.target as HTMLElement).closest("a");
+    if (!anchor) return;
+    const href = anchor.href;
+    if (!href || !href.startsWith("http")) return;
+    // Don't intercept internal app navigation
+    if (href.includes(window.location.host)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    // Open browser panel and navigate
+    setCurrentSidePanel("panel");
+    const wsId = props.runtimeWorkspaceId;
+    if (props.openworkServerClient && wsId) {
+      void (props.openworkServerClient as any).navigateBrowser?.(wsId, href).catch(() => null);
+    }
+  }, [isElectronRuntime, props.openworkServerClient, props.runtimeWorkspaceId, setCurrentSidePanel]);;
   const openBrowserUrlControlAction = useMemo<OpenworkControlAction>(() => ({
     id: "browser.open_url",
     label: "Open URL in built-in browser",
@@ -808,7 +827,7 @@ export function SessionPage(props: SessionPageProps) {
             className="min-h-0 flex-1"
           >
             <ResizablePanel minSize="360px" className="min-w-0">
-              <main className="flex h-full min-w-0 flex-col overflow-hidden border-r border-border">
+              <main className="flex h-full min-w-0 flex-col overflow-hidden border-r border-border" onClick={handleLinkClick}>
           <header className="z-10 flex h-10 shrink-0 items-center justify-between border-b border-border px-4 md:px-6 mac:titlebar-drag  mac:backdrop-blur-2xl mac:backdrop-saturate-150 @container/titlebar">
             <div className="flex min-w-0 items-center gap-3">
               {shellConfig.sidebar ? <SidebarTrigger className="mac:hidden" /> : null}
