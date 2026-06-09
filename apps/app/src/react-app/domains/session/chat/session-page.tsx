@@ -289,7 +289,7 @@ export function SessionPage(props: SessionPageProps) {
   const artifactTargetCount = artifactFileTargets.length;
   const hasArtifactTargets = artifactTargetCount > 0;
   const globalBrowserPanelOpen = useUiStateStore((state) => state.sidePanelState[GLOBAL_BROWSER_PANEL_KEY] === "panel");
-  const activeSidePanel = voiceSidePanelOpen ? "voice" : globalBrowserPanelOpen && !isDesktopRuntime() ? "panel" : sessionSidePanel;
+  const activeSidePanel = voiceSidePanelOpen ? "voice" : globalBrowserPanelOpen && !isElectronRuntime() ? "panel" : sessionSidePanel;
   const sidePanelOpen = activeSidePanel !== null;
   const panelRailActive = activeSidePanel === "panel";
   const extensionsRailActive = activeSidePanel === "extensions";
@@ -336,7 +336,7 @@ export function SessionPage(props: SessionPageProps) {
     }
     setSidePanelState(GLOBAL_VOICE_SIDE_PANEL_KEY, null);
     // Browser panel uses a global key on web (no session required to open it).
-    if (!isDesktopRuntime() && panel === "panel") {
+    if (!isElectronRuntime() && panel === "panel") {
       toggleSidePanelState(GLOBAL_BROWSER_PANEL_KEY, "panel");
       return;
     }
@@ -1173,7 +1173,7 @@ export function SessionPage(props: SessionPageProps) {
                       sessionId={props.selectedSessionId}
                       onClose={closeRightPane}
                     />
-                  ) : activeSidePanel === "panel" && (props.selectedSessionId || !isDesktopRuntime()) ? (
+                  ) : activeSidePanel === "panel" && (props.selectedSessionId || !isElectronRuntime()) ? (
                     <SidePanel
                       sessionId={props.selectedSessionId ?? ""}
                       client={props.openworkServerClient}
