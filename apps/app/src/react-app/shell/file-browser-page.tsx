@@ -39,7 +39,7 @@ function previewKindFor(name: string): PreviewKind {
 
 const MAX_TEXT_BYTES = 512 * 1024;
 
-export function FileBrowserPage() {
+export function FileBrowserPage({ onAddWorkspace }: { onAddWorkspace?: (folderPath: string) => void }) {
   const [conn, setConn] = React.useState<Conn | null>(null);
   const [path, setPath] = React.useState("");
   const [entries, setEntries] = React.useState<Entry[]>([]);
@@ -219,6 +219,20 @@ export function FileBrowserPage() {
     if (showNewFolder) setTimeout(() => newFolderInputRef.current?.focus(), 50);
   }, [showNewFolder]);
 
+  const deleteEntry = async (entry: Entry) => {
+    if (!conn) return;
+    const label = entry.kind === "dir" ? `folder "${entry.name}" and all its contents` : `file "${entry.name}"`;
+    if (!window.confirm(`Delete ${label}? This cannot be undone.`)) return;
+    try {
+      const res = await fetch(
+        `${conn.baseUrl}/workspace/${encodeURIComponent(conn.workspaceId)}/files/delete?path=${encodeURIComponent(entry.path)}`,
+        { method: "DELETE", headers: authHeaders() }
+      );
+      if (!res.ok) { const j = await res.json().catch(()=>({})); throw new Error((j as any).message ?? `Delete failed (${res.status})`); }
+      loadDir(path);
+    } catch (e) { setUploadError(e instanceof Error ? e.message : "Delete failed"); }
+  };
+
   const segments = path ? path.split("/") : [];
   const goTo = (idx: number) => { setPath(idx < 0 ? "" : segments.slice(0, idx+1).join("/")); loadDir(idx < 0 ? "" : segments.slice(0, idx+1).join("/")); };
   const openFolder = (entry: Entry) => { setPath(entry.path); loadDir(entry.path); };
@@ -233,7 +247,7 @@ export function FileBrowserPage() {
 
       {/* Breadcrumb */}
       <div className="mb-3 flex flex-wrap items-center gap-1 text-sm">
-        <button type="button" onClick={() => goTo(-1)} className="rounded px-2 py-0.5 hover:bg-black/5">workspace</button>
+        <button type="button" onClick={() => goTo(-1)} className="rounded px-2 py-0.5 hover:bg-black/5">Portfolio</button>
         {segments.map((seg, i) => (
           <span key={`${seg}-${i}`} className="flex items-center gap-1">
             <span className="opacity-40">/</span>
@@ -293,12 +307,28 @@ export function FileBrowserPage() {
                           <span aria-hidden>📄</span><span>{entry.name}</span>
                         </button>
                       )}
-                      {entry.kind === "file" ? (
-                        <button type="button" onClick={() => void download(entry)}
-                          className="rounded border px-2 py-0.5 text-xs hover:bg-black/5">
-                          ↓ <span className="opacity-50">({formatBytes(entry.size)})</span>
+                      <div className="flex items-center gap-1">
+                        {entry.kind === "file" ? (
+                          <button type="button" onClick={() => void download(entry)}
+                            className="rounded border px-2 py-0.5 text-xs hover:bg-black/5">
+                            ↓ <span className="opacity-50">({formatBytes(entry.size)})</span>
+                          </button>
+                        ) : (
+                          <>
+                            {path === "" && onAddWorkspace ? (
+                              <button type="button" onClick={() => onAddWorkspace(entry.path)}
+                                className="rounded border px-2 py-0.5 text-xs hover:bg-black/5">
+                                Add workspace
+                              </button>
+                            ) : null}
+                            <span className="text-xs opacity-40">folder</span>
+                          </>
+                        )}
+                        <button type="button" onClick={() => void deleteEntry(entry)}
+                          className="rounded border px-2 py-0.5 text-xs text-red-600 hover:bg-red-50 hover:border-red-300">
+                          ✕
                         </button>
-                      ) : <span className="text-xs opacity-40">folder</span>}
+                      </div>
                     </div>
                   );
                 })

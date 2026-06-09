@@ -3217,6 +3217,9 @@ export function SessionRoute() {
         }}
         submitting={createWorkspaceBusy}
         error={createWorkspaceError}
+        serverBaseUrl={baseUrl || undefined}
+        serverToken={token || undefined}
+        workspaceId={selectedWorkspaceEndpoint?.workspaceId || undefined}
         onConfirm={async (rawName) => {
           const safeName = rawName
             .trim()
