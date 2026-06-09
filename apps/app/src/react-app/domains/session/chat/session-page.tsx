@@ -461,7 +461,15 @@ export function SessionPage(props: SessionPageProps) {
         return { ok: false, error: `Browser provider is not available yet: ${provider}` };
       }
       setCurrentSidePanel("panel");
-      return window.__OPENWORK_ELECTRON__?.browser?.openUrl?.(url, provider);
+      if (isElectronRuntime()) {
+        return window.__OPENWORK_ELECTRON__?.browser?.openUrl?.(url, provider);
+      }
+      // Web: navigate via CDP
+      if (props.openworkServerClient && props.runtimeWorkspaceId) {
+        void props.openworkServerClient.navigateBrowser?.(props.runtimeWorkspaceId, url)
+          .catch(() => null);
+      }
+      return { ok: true };
     },
   }), [setCurrentSidePanel]);
   useControlAction(openBrowserUrlControlAction);
