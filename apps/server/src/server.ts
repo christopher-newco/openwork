@@ -1,4 +1,6 @@
 import { existsSync } from "node:fs";
+import * as net from "node:net";
+import * as crypto from "node:crypto";
 import { readFile, writeFile, rm, readdir, rename, stat, appendFile, mkdir } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -856,6 +858,100 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
     idleTimeout: 120,
   });
 
+  // VNC WebSocket proxy: bridges the client's noVNC connection to x11vnc on
+  // localhost:5900. Runs at GET /workspace/:id/browser/vnc (upgrade to WS).
+  // Auth: client token passed as ?token= query param (WS headers are limited).
+  server.httpServer.on("upgrade", (req, socket, head) => {
+    const url = new URL(req.url ?? "/", "http://localhost");
+    if (!/^\/workspace\/[^/]+\/browser\/vnc$/.test(url.pathname)) {
+      socket.destroy();
+      return;
+    }
+    const token = url.searchParams.get("token") ?? "";
+    // Validate token synchronously against the token service
+    tokens.scopeForToken(token).then((scope) => {
+      if (!scope) {
+        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+
+      // WebSocket handshake
+      const key = (req.headers as Record<string, string>)["sec-websocket-key"];
+      if (!key) { socket.destroy(); return; }
+      const accept = crypto.createHash("sha1")
+        .update(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
+        .digest("base64");
+      socket.write(
+        "HTTP/1.1 101 Switching Protocols\r\n" +
+        "Upgrade: websocket\r\n" +
+        "Connection: Upgrade\r\n" +
+        `Sec-WebSocket-Accept: ${accept}\r\n` +
+        "Sec-WebSocket-Protocol: binary\r\n" +
+        "\r\n",
+      );
+
+      // Connect to local VNC
+      const vnc = net.createConnection(5900, "127.0.0.1");
+
+      // WebSocket frame parser (client→server, always masked, binary)
+      let buf = Buffer.alloc(0);
+      socket.on("data", (chunk: Buffer) => {
+        buf = Buffer.concat([buf, chunk]);
+        while (buf.length >= 2) {
+          const b0 = buf[0]!, b1 = buf[1]!;
+          const masked = (b1 & 0x80) !== 0;
+          let payloadLen = b1 & 0x7f;
+          let headerLen = 2;
+          if (payloadLen === 126) {
+            if (buf.length < 4) break;
+            payloadLen = buf.readUInt16BE(2);
+            headerLen = 4;
+          } else if (payloadLen === 127) {
+            if (buf.length < 10) break;
+            payloadLen = Number(buf.readBigUInt64BE(2));
+            headerLen = 10;
+          }
+          if (masked) headerLen += 4;
+          if (buf.length < headerLen + payloadLen) break;
+          const opcode = b0 & 0x0f;
+          if (opcode === 8) { vnc.destroy(); break; } // close frame
+          if (opcode === 2 || opcode === 0) { // binary or continuation
+            let payload = buf.subarray(headerLen, headerLen + payloadLen);
+            if (masked) {
+              const mask = buf.subarray(headerLen - 4, headerLen);
+              payload = Buffer.from(payload);
+              for (let i = 0; i < payload.length; i++) (payload as Buffer)[i] ^= mask[i % 4]!;
+            }
+            vnc.write(payload);
+          }
+          buf = buf.subarray(headerLen + payloadLen);
+        }
+      });
+
+      // VNC→WebSocket: wrap in binary frames (server never masks)
+      vnc.on("data", (data: Buffer) => {
+        const len = data.length;
+        let hdr: Buffer;
+        if (len <= 125) {
+          hdr = Buffer.from([0x82, len]);
+        } else if (len <= 65535) {
+          hdr = Buffer.from([0x82, 126, len >> 8, len & 0xff]);
+        } else {
+          hdr = Buffer.alloc(10);
+          hdr[0] = 0x82; hdr[1] = 127;
+          Buffer.from(new BigUint64Array([BigInt(len)]).buffer).reverse().copy(hdr, 2);
+        }
+        if (!socket.destroyed) { socket.write(hdr); socket.write(data); }
+      });
+
+      socket.on("error", () => vnc.destroy());
+      socket.on("close", () => vnc.destroy());
+      vnc.on("error", () => { if (!socket.destroyed) socket.destroy(); });
+      vnc.on("close", () => { if (!socket.destroyed) socket.destroy(); });
+    }).catch(() => { socket.destroy(); });
+  });
+
   return {
     ...server,
     stop: async () => {
@@ -1051,10 +1147,6 @@ function withCors(response: Response, request: Request, config: ServerConfig) {
     "Authorization, Content-Type, X-OpenWork-Host-Token, X-OpenWork-Client-Id, X-OpenCode-Directory, X-Opencode-Directory, x-opencode-directory",
   );
   headers.set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
-  // Cache the CORS preflight so the browser doesn't send an OPTIONS before every
-  // single request. Cross-origin (app.soapbox.build → worker) was paying a full
-  // preflight round-trip per call (~2.6x latency); 10 minutes is plenty.
-  headers.set("Access-Control-Max-Age", "600");
   headers.set("Vary", "Origin");
   return new Response(response.body, { status: response.status, headers });
 }
@@ -3603,42 +3695,6 @@ function createRoutes(
     });
   });
 
-  // Directory listing for the web file browser. Sandboxed to the workspace;
-  // hides dotfiles/dirs. Empty/absent path lists the workspace root.
-  addRoute(routes, "GET", "/workspace/:id/files/list", "client", async (ctx) => {
-    const workspace = await resolveWorkspace(config, ctx.params.id);
-    const requested = (ctx.url.searchParams.get("path") ?? "").trim();
-    const relativePath = requested
-      ? normalizeWorkspaceRelativePath(requested, { allowSubdirs: true })
-      : "";
-    const absPath = relativePath ? resolveSafeChildPath(workspace.path, relativePath) : workspace.path;
-    if (!(await exists(absPath))) {
-      throw new ApiError(404, "dir_not_found", "Directory not found");
-    }
-    const dirInfo = await stat(absPath);
-    if (!dirInfo.isDirectory()) {
-      throw new ApiError(400, "not_a_directory", "Path is not a directory");
-    }
-    const dirents = await readdir(absPath, { withFileTypes: true });
-    const entries: Array<{ name: string; path: string; kind: "dir" | "file"; size: number; updatedAt: number }> = [];
-    for (const dirent of dirents) {
-      if (dirent.name.startsWith(".")) continue;
-      const childRel = relativePath ? `${relativePath}/${dirent.name}` : dirent.name;
-      let size = 0;
-      let updatedAt = 0;
-      try {
-        const childInfo = await stat(resolveSafeChildPath(workspace.path, childRel));
-        size = childInfo.size;
-        updatedAt = childInfo.mtimeMs;
-      } catch {
-        // unstattable entry (broken symlink etc.) — list it with zeros
-      }
-      entries.push({ name: dirent.name, path: childRel, kind: dirent.isDirectory() ? "dir" : "file", size, updatedAt });
-    }
-    entries.sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === "dir" ? -1 : 1));
-    return jsonResponse({ ok: true, path: relativePath, entries });
-  });
-
   addRoute(routes, "GET", "/workspace/:id/files/raw", "client", async (ctx) => {
     const workspace = await resolveWorkspace(config, ctx.params.id);
     const requested = (ctx.url.searchParams.get("path") ?? "").trim();
@@ -4383,6 +4439,80 @@ function createRoutes(
       throw new ApiError(404, "approval_not_found", "Approval request not found");
     }
     return jsonResponse({ ok: true, allowed: result.allowed });
+  });
+
+
+  // ---------- Built-in browser: CDP control routes ----------
+  // These routes forward navigation commands to the headless Chromium running on
+  // localhost:9222 via the Chrome DevTools Protocol. They power the URL bar,
+  // back/forward/reload buttons in the noVNC browser panel.
+  addRoute(routes, "POST", "/workspace/:id/browser/navigate", "client", async (ctx) => {
+    const body = await readJsonBody(ctx.request);
+    const url = typeof body.url === "string" ? body.url.trim() : "";
+    if (!url) throw new ApiError(400, "invalid_payload", "url is required");
+    const targets = await fetch("http://127.0.0.1:9222/json").then((r) => r.json()).catch(() => []);
+    const page = Array.isArray(targets) ? targets.find((t: any) => t.type === "page") : null;
+    if (!page?.webSocketDebuggerUrl) throw new ApiError(503, "browser_unavailable", "Chromium is not ready");
+    await fetch(`http://127.0.0.1:9222/json/protocol`).catch(() => null);
+    // Use CDP HTTP endpoint for one-shot commands
+    const ws = new WebSocket(page.webSocketDebuggerUrl);
+    await new Promise<void>((resolve, reject) => {
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ id: 1, method: "Page.navigate", params: { url } }));
+      };
+      ws.onmessage = () => { ws.close(); resolve(); };
+      ws.onerror = reject;
+      setTimeout(reject, 5000);
+    }).catch(() => null);
+    return jsonResponse({ ok: true });
+  });
+
+  addRoute(routes, "POST", "/workspace/:id/browser/back", "client", async (ctx) => {
+    const targets = await fetch("http://127.0.0.1:9222/json").then((r) => r.json()).catch(() => []);
+    const page = Array.isArray(targets) ? targets.find((t: any) => t.type === "page") : null;
+    if (page?.webSocketDebuggerUrl) {
+      const ws = new WebSocket(page.webSocketDebuggerUrl);
+      await new Promise<void>((resolve) => {
+        ws.onopen = () => { ws.send(JSON.stringify({ id: 1, method: "Page.goBack" })); };
+        ws.onmessage = () => { ws.close(); resolve(); };
+        setTimeout(resolve, 3000);
+      }).catch(() => null);
+    }
+    return jsonResponse({ ok: true });
+  });
+
+  addRoute(routes, "POST", "/workspace/:id/browser/forward", "client", async (ctx) => {
+    const targets = await fetch("http://127.0.0.1:9222/json").then((r) => r.json()).catch(() => []);
+    const page = Array.isArray(targets) ? targets.find((t: any) => t.type === "page") : null;
+    if (page?.webSocketDebuggerUrl) {
+      const ws = new WebSocket(page.webSocketDebuggerUrl);
+      await new Promise<void>((resolve) => {
+        ws.onopen = () => { ws.send(JSON.stringify({ id: 1, method: "Page.goForward" })); };
+        ws.onmessage = () => { ws.close(); resolve(); };
+        setTimeout(resolve, 3000);
+      }).catch(() => null);
+    }
+    return jsonResponse({ ok: true });
+  });
+
+  addRoute(routes, "POST", "/workspace/:id/browser/reload", "client", async (ctx) => {
+    const targets = await fetch("http://127.0.0.1:9222/json").then((r) => r.json()).catch(() => []);
+    const page = Array.isArray(targets) ? targets.find((t: any) => t.type === "page") : null;
+    if (page?.webSocketDebuggerUrl) {
+      const ws = new WebSocket(page.webSocketDebuggerUrl);
+      await new Promise<void>((resolve) => {
+        ws.onopen = () => { ws.send(JSON.stringify({ id: 1, method: "Page.reload" })); };
+        ws.onmessage = () => { ws.close(); resolve(); };
+        setTimeout(resolve, 3000);
+      }).catch(() => null);
+    }
+    return jsonResponse({ ok: true });
+  });
+
+  addRoute(routes, "GET", "/workspace/:id/browser/state", "client", async (ctx) => {
+    const targets = await fetch("http://127.0.0.1:9222/json").then((r) => r.json()).catch(() => []);
+    const page = Array.isArray(targets) ? targets.find((t: any) => t.type === "page") : null;
+    return jsonResponse({ url: page?.url ?? "", title: page?.title ?? "", available: !!page });
   });
 
   return routes;
