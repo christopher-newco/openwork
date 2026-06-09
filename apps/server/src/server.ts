@@ -3695,6 +3695,53 @@ function createRoutes(
     });
   });
 
+  addRoute(routes, "GET", "/workspace/:id/files/preview", "client", async (ctx) => {
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const pathParam = new URL(ctx.request.url).searchParams.get("path") ?? "";
+    if (!pathParam) throw new ApiError(400, "invalid_payload", "path is required");
+    const { join: joinPath, extname, basename: baseName } = await import("node:path");
+    const { readFile, mkdtemp, rm, copyFile } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { spawn } = await import("node:child_process");
+
+    const srcPath = joinPath(workspace.path, pathParam);
+    const ext = extname(srcPath).toLowerCase();
+    const officeExts = new Set([".docx",".doc",".odt",".xlsx",".xls",".ods",".pptx",".ppt",".odp"]);
+
+    if (!officeExts.has(ext)) {
+      throw new ApiError(400, "unsupported_format", "Preview only supported for Office documents");
+    }
+
+    // Convert to PDF using LibreOffice headless
+    const tmpDir = await mkdtemp(joinPath(tmpdir(), "ow-preview-"));
+    try {
+      await copyFile(srcPath, joinPath(tmpDir, baseName(srcPath)));
+      await new Promise<void>((resolve, reject) => {
+        const proc = spawn("libreoffice", [
+          "--headless", "--norestore", "--convert-to", "pdf",
+          "--outdir", tmpDir,
+          joinPath(tmpDir, baseName(srcPath)),
+        ], { env: { ...process.env, HOME: tmpDir } });
+        proc.on("close", (code) => code === 0 ? resolve() : reject(new Error(`LibreOffice exited ${code}`)));
+        proc.on("error", reject);
+        setTimeout(() => { proc.kill(); reject(new Error("LibreOffice timeout")); }, 30_000);
+      });
+      const pdfName = baseName(srcPath).replace(/\.[^.]+$/, ".pdf");
+      const pdfPath = joinPath(tmpDir, pdfName);
+      const pdfBytes = await readFile(pdfPath);
+      return new Response(pdfBytes, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `inline; filename="${pdfName}"`,
+          "Cache-Control": "no-store",
+        },
+      });
+    } finally {
+      rm(tmpDir, { recursive: true, force: true }).catch(() => null);
+    }
+  });
+
   addRoute(routes, "POST", "/workspace/:id/files/mkdir", "client", async (ctx) => {
     ensureWritable(config);
     requireClientScope(ctx, "collaborator");

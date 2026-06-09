@@ -6,7 +6,7 @@ import { resolveOpenworkConnection } from "./openwork-connection";
 
 type Entry = { name: string; path: string; kind: "dir" | "file"; size: number; updatedAt: number };
 type Conn = { baseUrl: string; token: string; hostToken: string; workspaceId: string };
-type PreviewKind = "text" | "image" | "pdf" | "office-word" | "office-excel" | "office-ppt" | "html" | "none";
+type PreviewKind = "text" | "image" | "pdf" | "office" | "html" | "none";
 
 const TEXT_EXT = new Set([
   "txt", "md", "markdown", "js", "jsx", "ts", "tsx", "css", "scss", "html", "htm",
@@ -31,16 +31,11 @@ function previewKindFor(name: string): PreviewKind {
   if (e === "html" || e === "htm") return "html";
   if (IMAGE_EXT.has(e)) return "image";
   if (TEXT_EXT.has(e)) return "text";
-  if (WORD_EXT.has(e)) return "office-word";
-  if (EXCEL_EXT.has(e)) return "office-excel";
-  if (PPT_EXT.has(e)) return "office-ppt";
+  if (WORD_EXT.has(e)||EXCEL_EXT.has(e)||PPT_EXT.has(e)) return "office";
   return "none";
 }
 
-// Lazy CDN loaders — only fetched when the relevant file type is first previewed
-const loadMammoth = () => import(/* @vite-ignore */ "https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js" as string).then((m:any)=>m.default??m);
-const loadXLSX = () => import(/* @vite-ignore */ "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" as string).then((m:any)=>m.default??m.XLSX??m);
-// PPTX via PptxGenJS reader isn't available; use an iframe to Google Docs viewer as fallback
+
 
 const MAX_TEXT_BYTES = 512 * 1024;
 
@@ -133,33 +128,26 @@ export function FileBrowserPage() {
     if (kind === "text" && entry.size > MAX_TEXT_BYTES) { setPreviewError("File too large to preview inline."); return; }
     setPreviewLoading(true);
     try {
-      const res = await fetch(rawUrl(entry.path), { headers: authHeaders() });
-      if (!res.ok) throw new Error(`Preview failed (${res.status})`);
-      if (kind === "text") {
-        setPreviewText(await res.text());
-      } else if (kind === "html") {
-        const html = await res.text();
-        // Sanitize: remove script tags, keep structure
-        setPreviewHtml(html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, ""));
-      } else if (kind === "office-word") {
-        const arrayBuffer = await res.arrayBuffer();
-        const mammoth = await loadMammoth();
-        const result = await mammoth.convertToHtml({ arrayBuffer });
-        setPreviewHtml(result.value);
-      } else if (kind === "office-excel") {
-        const arrayBuffer = await res.arrayBuffer();
-        const XLSX = await loadXLSX();
-        const wb = XLSX.read(arrayBuffer, { type: "array" });
-        const sheet = wb.Sheets[wb.SheetNames[0]];
-        setPreviewHtml(XLSX.utils.sheet_to_html(sheet));
-      } else if (kind === "office-ppt") {
-        // No good client-side PPTX renderer; use Google Docs viewer via proxy URL
-        const publicUrl = rawUrl(entry.path) + `&_token=${encodeURIComponent(conn.token)}`;
-        setPreviewUrl(publicUrl); // used as a download fallback; actual preview via iframe below
-        setPreviewError("PowerPoint preview: use the Download button to open in your local app.");
-      } else {
+      if (kind === "office") {
+        // Server converts to PDF via LibreOffice — WYSIWYG render
+        const previewEndpoint = `${conn.baseUrl}/workspace/${encodeURIComponent(conn.workspaceId)}/files/preview?path=${encodeURIComponent(entry.path)}`;
+        const res = await fetch(previewEndpoint, { headers: authHeaders() });
+        if (!res.ok) throw new Error(`Preview failed (${res.status}): LibreOffice may still be starting`);
         const blob = await res.blob();
         setPreviewUrl(URL.createObjectURL(blob));
+        setPreviewKind("pdf"); // render as PDF (which it now is)
+      } else {
+        const res = await fetch(rawUrl(entry.path), { headers: authHeaders() });
+        if (!res.ok) throw new Error(`Preview failed (${res.status})`);
+        if (kind === "text") {
+          setPreviewText(await res.text());
+        } else if (kind === "html") {
+          const html = await res.text();
+          setPreviewHtml(html.replace(/<script[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, ""));
+        } else {
+          const blob = await res.blob();
+          setPreviewUrl(URL.createObjectURL(blob));
+        }
       }
     } catch (e) {
       setPreviewError(e instanceof Error ? e.message : "Preview failed");
@@ -335,10 +323,9 @@ export function FileBrowserPage() {
                   : previewKind === "text" ? <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed">{previewText}</pre>
                   : previewKind === "image" && previewUrl ? <img src={previewUrl} alt={selected.name} className="max-h-full max-w-full object-contain" />
                   : previewKind === "pdf" && previewUrl ? <embed src={previewUrl} type="application/pdf" className="h-full min-h-[60vh] w-full" />
-                  : (previewKind === "html" || previewKind === "office-word" || previewKind === "office-excel") && previewHtml ? (
+                  : previewKind === "html" && previewHtml ? (
                     <iframe srcDoc={previewHtml} sandbox="allow-same-origin" className="h-full min-h-[60vh] w-full border-0" title={selected.name} />
                   )
-                  : previewKind === "office-ppt" ? <div className="text-sm opacity-60">PowerPoint preview not available in browser. Use Download to open locally.</div>
                   : <div className="text-sm opacity-60">No inline preview for this file type. Use Download to open it.</div>}
               </div>
             </div>

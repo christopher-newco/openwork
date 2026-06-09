@@ -25,6 +25,7 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends \
        ca-certificates curl tar unzip \
        chromium x11vnc xvfb \
+       libreoffice-headless libreoffice-writer libreoffice-calc libreoffice-impress \
   && rm -rf /var/lib/apt/lists/*
 
 COPY --from=openwork-builder /src/apps/orchestrator/dist/bin/openwork /usr/local/bin/openwork
