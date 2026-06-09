@@ -1264,6 +1264,7 @@ export function ReactSessionComposer(props: ComposerProps) {
                           ))}
                         </div>
                         <div className="max-h-72 overflow-y-auto p-2">
+                          {isDesktopRuntime() ? (
                           <div className="mb-2 flex justify-end border-b border-dls-border px-1 pb-2">
                             <button
                               type="button"
@@ -1277,6 +1278,7 @@ export function ReactSessionComposer(props: ComposerProps) {
                               {t("composer.configure")}
                             </button>
                           </div>
+                          ) : null}
                           {toolMenuSection === "commands" ? (
                             toolCommandItems.length > 0 ? (
                               <div className="grid gap-1">

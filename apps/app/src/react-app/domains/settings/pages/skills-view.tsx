@@ -59,6 +59,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ConfirmModal } from "@/react-app/design-system/modals/confirm-modal";
 import {
+import { isDesktopRuntime } from "../../../../app/utils";
   SelectMenu,
   type SelectMenuOption,
 } from "@/react-app/design-system/select-menu";
@@ -780,10 +781,12 @@ export function SkillsView(props: SkillsViewProps) {
               <FolderOpen size={14} />
               {t("skills.reveal_folder")}
             </button>
+            {isDesktopRuntime() ? (
             <button type="button" onClick={() => void handleNewSkill()} disabled={!canCreateInChat} className={pillPrimaryClass}>
               <Sparkles size={14} />
               {t("skills.create_in_chat")}
             </button>
+            ) : null}
           </div>
         </div>
 
@@ -1021,6 +1024,7 @@ export function SkillsView(props: SkillsViewProps) {
                             </div>
                           </div>
 
+                          {isDesktopRuntime() ? (
                           <div className="flex items-center justify-between gap-3 border-t border-dls-border pt-4">
                             <span className={tagClass}>{t("skills.cloud_footer_label")}</span>
                             <button
@@ -1043,6 +1047,7 @@ export function SkillsView(props: SkillsViewProps) {
                                     : t("skills.install")}
                             </button>
                           </div>
+                          ) : null}
                         </div>
                       );
                     })}
@@ -1165,6 +1170,7 @@ export function SkillsView(props: SkillsViewProps) {
                       </div>
                     </div>
 
+                    {isDesktopRuntime() ? (
                     <div className="flex items-center justify-between gap-3 border-t border-dls-border pt-4">
                       <span className={tagClass}>{t("skills.hub_label")}</span>
                       <button
@@ -1182,6 +1188,7 @@ export function SkillsView(props: SkillsViewProps) {
                         {installingHubSkill === skill.name ? t("skills.installing") : t("common.add")}
                       </button>
                     </div>
+                    ) : null}
                   </div>
                 ))}
               </div>

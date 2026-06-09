@@ -498,7 +498,7 @@ export function McpView(props: McpViewProps) {
         </div>
       ) : null}
 
-      <McpCustomAppCard onOpen={() => setAddMcpModalOpen(true)} />
+      {isDesktopRuntime() ? <McpCustomAppCard onOpen={() => setAddMcpModalOpen(true)} /> : null}
 
       {/* Search + filter */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -1074,6 +1074,7 @@ function McpConfiguredServerDetails(props: Parameters<typeof McpConfiguredServer
         </div>
       </details>
       <McpConfiguredServerAuthActions {...props} />
+      {isDesktopRuntime() ? (
       <div className="flex justify-end gap-2 pt-1">
         {props.onToggleEnabled && props.entry.source !== "config.global" ? (
           <Button
@@ -1103,6 +1104,7 @@ function McpConfiguredServerDetails(props: Parameters<typeof McpConfiguredServer
           {t("mcp.remove_app")}
         </Button>
       </div>
+      ) : null}
     </div>
   );
 }
