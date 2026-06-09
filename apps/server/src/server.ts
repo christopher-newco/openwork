@@ -3763,6 +3763,26 @@ function createRoutes(
     return jsonResponse({ ok: true, path: requestedPath });
   });
 
+  addRoute(routes, "DELETE", "/workspace/:id/files/delete", "client", async (ctx) => {
+    ensureWritable(config);
+    requireClientScope(ctx, "collaborator");
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const requested = (ctx.url.searchParams.get("path") ?? "").trim();
+    if (!requested || requested === ".") throw new ApiError(400, "invalid_payload", "Cannot delete the workspace root");
+    const { rm } = await import("node:fs/promises");
+    const { join: joinPath } = await import("node:path");
+    const dir = joinPath(workspace.path, requested);
+    // Safety: ensure the target is within the workspace
+    if (!dir.startsWith(workspace.path)) throw new ApiError(400, "invalid_path", "Path escapes workspace");
+    await rm(dir, { recursive: true, force: true });
+    await recordAudit(workspace.path, {
+      id: shortId(), workspaceId: workspace.id,
+      actor: ctx.actor ?? { type: "remote" }, action: "workspace.delete_file",
+      target: dir, summary: "Deleted path", timestamp: Date.now(),
+    });
+    return jsonResponse({ ok: true });
+  });
+
   addRoute(routes, "GET", "/workspace/:id/files/list", "client", async (ctx) => {
     const workspace = await resolveWorkspace(config, ctx.params.id);
     const pathParam = new URL(ctx.request.url).searchParams.get("path") ?? "";
