@@ -1178,6 +1178,15 @@ export function SessionRoute() {
   }, [activeReloadBlockingSessions, client, reloadCoordinator, reloadWorkspaceEngineFromUi, selectedWorkspaceId]);
 
   useEffect(() => {
+    // On web deployments the worker's opencode engine picks up the org model
+    // catalog automatically at boot (via the well-known/opencode remote config
+    // mechanism). The /engine/reload endpoint is not available in this
+    // deployment, so there is nothing for the user to do — clear the flag
+    // immediately so the "Reload required" banner never shows on web.
+    if (!isDesktopRuntime()) {
+      try { window.localStorage.removeItem(reloadAfterOrgOnboardingKey); } catch {}
+      return;
+    }
     if (!reloadCoordinator.canReloadWorkspaceEngine) return;
     try {
       if (window.localStorage.getItem(reloadAfterOrgOnboardingKey) !== "1") return;
