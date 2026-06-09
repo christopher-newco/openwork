@@ -1231,20 +1231,7 @@ export function SessionPage(props: SessionPageProps) {
             >
               <FolderOpen size={17} />
             </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className={cn(
-                "rounded-xl transition-colors hover:bg-muted hover:text-foreground",
-                extensionsRailActive && "bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary",
-              )}
-              onClick={props.settingsSlot ? openExtensionsRailPane : props.onOpenSettings}
-              title="Extensions"
-              aria-label="Extensions"
-              aria-pressed={extensionsRailActive}
-            >
-              <Settings2 size={17} />
-            </Button>
+
           </aside>
           </div>
         </SidebarInset>
