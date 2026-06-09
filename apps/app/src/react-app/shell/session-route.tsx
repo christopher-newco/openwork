@@ -2345,17 +2345,43 @@ export function SessionRoute() {
     );
   }, [workspaces]);
 
+  // Returns a host-authenticated openwork-server client, refreshing the
+  // stored host token from den-api first (host routes 401 when the token is
+  // stale/absent — which is common since normal chat/file work only uses
+  // client routes and never exercises the stored host credential).
+  const getHostClient = useCallback(async (): Promise<ReturnType<typeof createOpenworkServerClient>> => {
+    const settings = readDenSettings();
+    const orgId = settings.activeOrgId ?? "";
+    if (!PREDEFINED_WORKER_ID || !orgId) {
+      throw new Error("Not connected to a workspace yet. Reload and try again.");
+    }
+    const denClient = createDenClient({
+      baseUrl: settings.baseUrl,
+      apiBaseUrl: settings.apiBaseUrl,
+      token: settings.authToken,
+    });
+    const tokens = await denClient.getWorkerTokens(PREDEFINED_WORKER_ID, orgId);
+    const clientToken = tokens.clientToken ?? tokens.ownerToken ?? "";
+    const hostToken = tokens.hostToken ?? "";
+    const openworkUrl = tokens.openworkUrl ?? "";
+    const serverBaseUrl = (() => {
+      try { return new URL(openworkUrl).origin; } catch { return openworkUrl.replace(/\/w\/.*$/, ""); }
+    })();
+    if (!serverBaseUrl || !clientToken || !hostToken) {
+      throw new Error("Could not load workspace credentials. Reload and try again.");
+    }
+    writeOpenworkServerSettings({ urlOverride: serverBaseUrl, token: clientToken, hostToken, remoteAccessEnabled: true });
+    return createOpenworkServerClient({ baseUrl: serverBaseUrl, token: clientToken, hostToken });
+  }, []);
+
   const handleSaveRenameWorkspace = useCallback(async () => {
     if (!renameWorkspaceId) return;
     const trimmed = renameWorkspaceTitle.trim();
     if (!trimmed) return;
     setRenameWorkspaceBusy(true);
     try {
-      if (!client) {
-        toast.error("OpenWork server is unavailable. Reconnect the server before renaming workspaces.");
-        return;
-      }
-      await client.updateWorkspaceDisplayName(renameWorkspaceId, trimmed);
+      const hostClient = await getHostClient();
+      await hostClient.updateWorkspaceDisplayName(renameWorkspaceId, trimmed);
       setRenameWorkspaceId(null);
       setRenameWorkspaceTitle("");
       await refreshRouteState();
@@ -2366,7 +2392,7 @@ export function SessionRoute() {
     } finally {
       setRenameWorkspaceBusy(false);
     }
-  }, [client, refreshRouteState, renameWorkspaceId, renameWorkspaceTitle]);
+  }, [getHostClient, refreshRouteState, renameWorkspaceId, renameWorkspaceTitle]);
 
   const handleRevealWorkspace = useCallback(async (workspaceId: string) => {
     const workspace = workspaces.find((item) => item.id === workspaceId);
@@ -3189,47 +3215,8 @@ export function SessionRoute() {
           setCreateWorkspaceBusy(true);
           setCreateWorkspaceError(null);
           try {
-            // Creating a workspace hits a HOST-privileged worker route. The
-            // browser's stored host token can be stale/absent (normal chat/file
-            // work only uses client routes), which 401s the create. Re-fetch a
-            // fresh host token from den-api and re-store it so this — and any
-            // later host op (rename/delete) — works.
-            const settings = readDenSettings();
-            const orgId = settings.activeOrgId ?? "";
-            if (!PREDEFINED_WORKER_ID || !orgId) {
-              throw new Error("Not connected to a workspace yet. Reload and try again.");
-            }
-            const denClient = createDenClient({
-              baseUrl: settings.baseUrl,
-              apiBaseUrl: settings.apiBaseUrl,
-              token: settings.authToken,
-            });
-            const tokens = await denClient.getWorkerTokens(PREDEFINED_WORKER_ID, orgId);
-            const clientToken = tokens.clientToken ?? tokens.ownerToken ?? "";
-            const hostToken = tokens.hostToken ?? "";
-            const openworkUrl = tokens.openworkUrl ?? "";
-            const serverBaseUrl = (() => {
-              try {
-                return new URL(openworkUrl).origin;
-              } catch {
-                return openworkUrl.replace(/\/w\/.*$/, "");
-              }
-            })();
-            if (!serverBaseUrl || !clientToken || !hostToken) {
-              throw new Error("Could not load workspace credentials. Reload and try again.");
-            }
-            writeOpenworkServerSettings({
-              urlOverride: serverBaseUrl,
-              token: clientToken,
-              hostToken,
-              remoteAccessEnabled: true,
-            });
-            const freshClient = createOpenworkServerClient({
-              baseUrl: serverBaseUrl,
-              token: clientToken,
-              hostToken,
-            });
-            const list = await freshClient.createLocalWorkspace({
+            const hostClient = await getHostClient();
+            const list = await hostClient.createLocalWorkspace({
               folderPath: `/workspace/${safeName}`,
               name: safeName,
               preset: "starter",
