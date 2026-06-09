@@ -760,6 +760,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         setProviderConnectedIds,
         setDisabledProviders,
         markOpencodeConfigReloadRequired: () => {
+          if (!isDesktopRuntime()) return;
           setConfigActionStatus(t("settings.config_updated"));
           reloadCoordinator.markReloadRequired("config", {
             type: "config",
