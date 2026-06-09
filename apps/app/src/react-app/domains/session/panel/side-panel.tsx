@@ -152,42 +152,42 @@ type BrowserPanelContentProps = {
 function BrowserPanelContent({
   tab,
   onClose,
+  serverBaseUrl,
+  serverToken,
+  workspaceId,
 }: BrowserPanelContentProps) {
   const isAvailable = Boolean(getElectronBrowser());
   const [urlInput, setUrlInput] = React.useState(tab.url);
   const urlFocusedRef = React.useRef(false);
   const contentRef = React.useRef<HTMLDivElement>(null);
-  const noVncContainerRef = React.useRef<HTMLDivElement>(null);
   const urlInputRef = React.useRef<HTMLInputElement>(null);
+
+  const noVncContainerRef = React.useRef<HTMLDivElement>(null);
   const rfbRef = React.useRef<any>(null);
 
-  // Screenshot polling for web: poll /browser/screenshot every 200ms for a live feed.
-  const [screenshotSrc, setScreenshotSrc] = React.useState<string>("");
-  const [screenshotError, setScreenshotError] = React.useState<string>("");
+  // noVNC WebSocket VNC connection for live interactive browser on web
   React.useEffect(() => {
-    if (isDesktopRuntime() || !props.serverBaseUrl || !props.serverToken || !props.workspaceId) return;
-    let active = true;
-    const base = props.serverBaseUrl.replace(/\/+$/, "");
-    const url = `${base}/workspace/${encodeURIComponent(props.workspaceId)}/browser/screenshot`;
-    const poll = async () => {
-      if (!active) return;
-      try {
-        const res = await fetch(url, { headers: { Authorization: `Bearer ${props.serverToken}` } });
-        if (!res.ok) throw new Error(`Screenshot unavailable (${res.status})`);
-        const blob = await res.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        if (active) {
-          setScreenshotSrc(prev => { if (prev) URL.revokeObjectURL(prev); return blobUrl; });
-          setScreenshotError("");
-        }
-      } catch (e) {
-        if (active) setScreenshotError(e instanceof Error ? e.message : "Screenshot unavailable");
-      }
-      if (active) setTimeout(poll, 200);
+    if (isDesktopRuntime() || !noVncContainerRef.current || !serverBaseUrl || !serverToken || !workspaceId) return;
+    const container = noVncContainerRef.current;
+    const wsBase = serverBaseUrl
+      .replace("https://", "wss://")
+      .replace("http://", "ws://")
+      .replace(/[/]+$/, "");
+    const wsUrl = `${wsBase}/workspace/${encodeURIComponent(workspaceId)}/browser/vnc?token=${encodeURIComponent(serverToken)}`;
+    let rfb: any = null;
+    let cancelled = false;
+    void loadRFB().then((RFB) => {
+      if (cancelled || !container) return;
+      rfb = new RFB(container, wsUrl, { wsProtocols: ["binary"] });
+      rfb.scaleViewport = true;
+      rfbRef.current = rfb;
+    });
+    return () => {
+      cancelled = true;
+      rfb?.disconnect();
+      rfbRef.current = null;
     };
-    void poll();
-    return () => { active = false; };
-  }, [props.serverBaseUrl, props.serverToken, props.workspaceId]);
+  }, [serverBaseUrl, serverToken, workspaceId]);
   const shownRef = React.useRef(false);
   const boundsFrameRef = React.useRef<number | null>(null);
   const lastBoundsRef = React.useRef<{ x: number; y: number; width: number; height: number } | null>(null);
@@ -199,13 +199,13 @@ function BrowserPanelContent({
   }, [tab.id, tab.url]);
 
   const cdpPost = React.useCallback((path: string, body?: Record<string, unknown>) => {
-    if (!props.serverBaseUrl || !props.workspaceId) return;
-    void fetch(`${props.serverBaseUrl}/workspace/${encodeURIComponent(props.workspaceId)}${path}`, {
+    if (!serverBaseUrl || !workspaceId) return;
+    void fetch(`${serverBaseUrl}/workspace/${encodeURIComponent(workspaceId)}${path}`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${props.serverToken ?? ""}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${serverToken ?? ""}`, "Content-Type": "application/json" },
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
-  }, [props.serverBaseUrl, props.serverToken, props.workspaceId]);
+  }, [serverBaseUrl, serverToken, workspaceId]);
 
   const navigate = React.useCallback(() => {
     if (isDesktopRuntime()) void getElectronBrowser()?.navigate?.(urlInput);
@@ -432,17 +432,7 @@ function BrowserPanelContent({
       <div className="min-h-0 flex-1 overflow-hidden">
         {isAvailable
           ? <div ref={contentRef} className="h-full overflow-hidden" />
-          : (
-          <div className="h-full overflow-hidden bg-black flex flex-col">
-            {screenshotError ? (
-              <div className="flex flex-1 items-center justify-center text-xs text-white/40">{screenshotError}</div>
-            ) : screenshotSrc ? (
-              <img src={screenshotSrc} alt="Browser" draggable={false} className="h-full w-full object-contain" />
-            ) : (
-              <div className="flex flex-1 items-center justify-center text-xs text-white/40">Connecting to browser…</div>
-            )}
-          </div>
-        )}
+          : <div ref={noVncContainerRef} className="h-full overflow-hidden bg-black" />}
       </div>
     </>
   );
