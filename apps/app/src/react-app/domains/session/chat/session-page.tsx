@@ -69,6 +69,7 @@ const STARTUP_SKELETON_ROWS = [
   { id: "final", titleWidth: "36%", bodyWidth: "74%" },
 ];
 const GLOBAL_VOICE_SIDE_PANEL_KEY = "__openwork_voice__";
+const GLOBAL_BROWSER_PANEL_KEY = "__openwork_browser__";
 const EMPTY_TRANSCRIPT_TARGETS: OpenTarget[] = [];
 
 type OpenSessionTab = {
@@ -287,7 +288,8 @@ export function SessionPage(props: SessionPageProps) {
   const artifactFileTargets = useMemo(() => accessibleTargets.filter(isCollectibleArtifactTarget), [accessibleTargets]);
   const artifactTargetCount = artifactFileTargets.length;
   const hasArtifactTargets = artifactTargetCount > 0;
-  const activeSidePanel = voiceSidePanelOpen ? "voice" : sessionSidePanel;
+  const globalBrowserPanelOpen = useUiStateStore((state) => state.sidePanelState[GLOBAL_BROWSER_PANEL_KEY] === "panel");
+  const activeSidePanel = voiceSidePanelOpen ? "voice" : globalBrowserPanelOpen && !isDesktopRuntime() ? "panel" : sessionSidePanel;
   const sidePanelOpen = activeSidePanel !== null;
   const panelRailActive = activeSidePanel === "panel";
   const extensionsRailActive = activeSidePanel === "extensions";
@@ -333,6 +335,11 @@ export function SessionPage(props: SessionPageProps) {
       return;
     }
     setSidePanelState(GLOBAL_VOICE_SIDE_PANEL_KEY, null);
+    // Browser panel uses a global key on web (no session required to open it).
+    if (!isDesktopRuntime() && panel === "panel") {
+      toggleSidePanelState(GLOBAL_BROWSER_PANEL_KEY, "panel");
+      return;
+    }
     toggleSidePanelState(props.selectedSessionId, panel);
   }, [props.selectedSessionId, setSidePanelState, toggleSidePanelState]);
 
