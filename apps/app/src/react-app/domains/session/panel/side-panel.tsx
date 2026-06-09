@@ -38,8 +38,17 @@ import {
   sameBounds,
 } from "./utils";
 import { isDesktopRuntime } from "../../../../app/utils";
-// @ts-ignore — noVNC ships as an ES module; no official TS types
-import RFB from "@novnc/novnc/core/rfb.js";
+// noVNC loaded dynamically at runtime — avoids bundling a 200KB VNC library
+// that's only needed on web deployments with the browser panel active.
+let rfbPromise: Promise<typeof import("@novnc/novnc/core/rfb.js")["default"]> | null = null;
+function loadRFB() {
+  if (!rfbPromise) {
+    rfbPromise = import(/* @vite-ignore */ "https://cdn.jsdelivr.net/npm/@novnc/novnc@1.7.0/core/rfb.js")
+      .then((m: any) => m.default ?? m)
+      .catch(() => { rfbPromise = null; throw new Error("Failed to load noVNC"); });
+  }
+  return rfbPromise;
+}
 
 type SidePanelProps = {
   sessionId: string;
@@ -150,19 +159,29 @@ function BrowserPanelContent({
   const contentRef = React.useRef<HTMLDivElement>(null);
   const noVncContainerRef = React.useRef<HTMLDivElement>(null);
   const urlInputRef = React.useRef<HTMLInputElement>(null);
-  const rfbRef = React.useRef<InstanceType<typeof RFB> | null>(null);
+  const rfbRef = React.useRef<any>(null);
 
   React.useEffect(() => {
     if (isDesktopRuntime() || !noVncContainerRef.current || !props.serverBaseUrl || !props.serverToken || !props.workspaceId) return;
+    const container = noVncContainerRef.current;
     const wsBase = props.serverBaseUrl
       .replace("https://", "wss://")
       .replace("http://", "ws://")
       .replace(/[/]+$/, "");
     const wsUrl = `${wsBase}/workspace/${encodeURIComponent(props.workspaceId)}/browser/vnc?token=${encodeURIComponent(props.serverToken)}`;
-    const rfb = new RFB(noVncContainerRef.current, wsUrl, { wsProtocols: ["binary"] });
-    rfb.scaleViewport = true;
-    rfbRef.current = rfb;
-    return () => { rfb.disconnect(); rfbRef.current = null; };
+    let rfb: any = null;
+    let cancelled = false;
+    void loadRFB().then((RFB) => {
+      if (cancelled || !container) return;
+      rfb = new RFB(container, wsUrl, { wsProtocols: ["binary"] });
+      rfb.scaleViewport = true;
+      rfbRef.current = rfb;
+    });
+    return () => {
+      cancelled = true;
+      rfb?.disconnect();
+      rfbRef.current = null;
+    };
   }, [props.serverBaseUrl, props.serverToken, props.workspaceId]);
   const shownRef = React.useRef(false);
   const boundsFrameRef = React.useRef<number | null>(null);
