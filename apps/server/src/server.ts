@@ -3695,6 +3695,27 @@ function createRoutes(
     });
   });
 
+  addRoute(routes, "POST", "/workspace/:id/files/mkdir", "client", async (ctx) => {
+    ensureWritable(config);
+    requireClientScope(ctx, "collaborator");
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const body = await readJsonBody(ctx.request);
+    const requestedPath = String(body.path ?? "").trim();
+    if (!requestedPath) throw new ApiError(400, "invalid_payload", "path is required");
+    const { mkdir } = await import("node:fs/promises");
+    const { join: joinPath } = await import("node:path");
+    const dir = joinPath(workspace.path, requestedPath);
+    // Safety: ensure the target is within the workspace
+    if (!dir.startsWith(workspace.path)) throw new ApiError(400, "invalid_path", "Path escapes workspace");
+    await mkdir(dir, { recursive: true });
+    await recordAudit(workspace.path, {
+      id: shortId(), workspaceId: workspace.id,
+      actor: ctx.actor ?? { type: "remote" }, action: "workspace.mkdir",
+      target: dir, summary: `Created folder ${requestedPath}`, timestamp: Date.now(),
+    });
+    return jsonResponse({ ok: true, path: requestedPath });
+  });
+
   addRoute(routes, "GET", "/workspace/:id/files/list", "client", async (ctx) => {
     const workspace = await resolveWorkspace(config, ctx.params.id);
     const pathParam = new URL(ctx.request.url).searchParams.get("path") ?? "";
