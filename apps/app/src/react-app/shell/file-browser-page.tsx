@@ -120,7 +120,17 @@ export function FileBrowserPage() {
       .listWorkspaceFiles(conn.workspaceId, path)
       .then((res) => {
         if (cancelled) return;
-        setEntries(res.entries ?? []);
+        const HIDDEN_EXTENSIONS = new Set([".json", ".jsonc", ".lock", ".yaml", ".yml", ".toml", ".ini", ".env"]);
+        const HIDDEN_NAMES = new Set(["node_modules", ".git", "dist", ".cache", "package-lock.json", "pnpm-lock.yaml"]);
+        const filtered = (res.entries ?? []).filter((e: Entry) => {
+          if (HIDDEN_NAMES.has(e.name)) return false;
+          if (e.kind === "file") {
+            const dot = e.name.lastIndexOf(".");
+            if (dot >= 0 && HIDDEN_EXTENSIONS.has(e.name.slice(dot).toLowerCase())) return false;
+          }
+          return true;
+        });
+        setEntries(filtered);
         setLoading(false);
       })
       .catch((e: unknown) => {
