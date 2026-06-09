@@ -390,7 +390,19 @@ export function SessionPage(props: SessionPageProps) {
         setCurrentSidePanel("panel");
         void window.__OPENWORK_ELECTRON__?.browser?.createTab?.(url);
       } else {
-        window.open(url, "_blank", "noopener,noreferrer");
+        // Web: open the URL in the built-in browser panel instead of a new tab
+        setCurrentSidePanel("panel");
+        // The noVNC canvas connects automatically; navigate via CDP
+        if (props.openworkServerClient?.baseUrl && props.runtimeWorkspaceId) {
+          void fetch(`${props.openworkServerClient.baseUrl}/workspace/${encodeURIComponent(props.runtimeWorkspaceId)}/browser/navigate`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${props.openworkServerClient.token ?? ""}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ url }),
+          });
+        }
       }
       return;
     }
@@ -1169,22 +1181,20 @@ export function SessionPage(props: SessionPageProps) {
             ) : null}
           </ResizablePanelGroup>
           <aside className="flex w-11 shrink-0 flex-col items-center gap-1 border-l border-border bg-background/95 px-1 py-2 text-muted-foreground mac:titlebar-no-drag">
-            {isElectronRuntime() ? (
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className={cn(
-                  "rounded-xl transition-colors hover:bg-muted hover:text-foreground",
-                  panelRailActive && "bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary",
-                )}
-                onClick={openBrowserRailPane}
-                title="Browser"
-                aria-label="Browser"
-                aria-pressed={panelRailActive}
-              >
-                <Globe size={17} />
-              </Button>
-            ) : null}
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className={cn(
+                "rounded-xl transition-colors hover:bg-muted hover:text-foreground",
+                panelRailActive && "bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary",
+              )}
+              onClick={openBrowserRailPane}
+              title="Browser"
+              aria-label="Browser"
+              aria-pressed={panelRailActive}
+            >
+              <Globe size={17} />
+            </Button>
             {voiceExtensionEnabled ? (
               <Button
                 variant="ghost"

@@ -37,6 +37,9 @@ import {
   hasNativeBrowserOccluder,
   sameBounds,
 } from "./utils";
+import { isDesktopRuntime } from "../../../../app/utils";
+// @ts-ignore — noVNC ships as an ES module; no official TS types
+import RFB from "@novnc/novnc/core/rfb.js";
 
 type SidePanelProps = {
   sessionId: string;
@@ -132,6 +135,9 @@ function SidePanelTab({ tab, active, onSelect, onClose }: SidePanelTabProps) {
 type BrowserPanelContentProps = {
   tab: BrowserPanelTab;
   onClose: () => void;
+  serverBaseUrl?: string;
+  serverToken?: string;
+  workspaceId?: string | null;
 };
 
 function BrowserPanelContent({
@@ -142,7 +148,22 @@ function BrowserPanelContent({
   const [urlInput, setUrlInput] = React.useState(tab.url);
   const urlFocusedRef = React.useRef(false);
   const contentRef = React.useRef<HTMLDivElement>(null);
+  const noVncContainerRef = React.useRef<HTMLDivElement>(null);
   const urlInputRef = React.useRef<HTMLInputElement>(null);
+  const rfbRef = React.useRef<InstanceType<typeof RFB> | null>(null);
+
+  React.useEffect(() => {
+    if (isDesktopRuntime() || !noVncContainerRef.current || !props.serverBaseUrl || !props.serverToken || !props.workspaceId) return;
+    const wsBase = props.serverBaseUrl
+      .replace("https://", "wss://")
+      .replace("http://", "ws://")
+      .replace(/[/]+$/, "");
+    const wsUrl = `${wsBase}/workspace/${encodeURIComponent(props.workspaceId)}/browser/vnc?token=${encodeURIComponent(props.serverToken)}`;
+    const rfb = new RFB(noVncContainerRef.current, wsUrl, { wsProtocols: ["binary"] });
+    rfb.scaleViewport = true;
+    rfbRef.current = rfb;
+    return () => { rfb.disconnect(); rfbRef.current = null; };
+  }, [props.serverBaseUrl, props.serverToken, props.workspaceId]);
   const shownRef = React.useRef(false);
   const boundsFrameRef = React.useRef<number | null>(null);
   const lastBoundsRef = React.useRef<{ x: number; y: number; width: number; height: number } | null>(null);
@@ -153,21 +174,34 @@ function BrowserPanelContent({
     }
   }, [tab.id, tab.url]);
 
+  const cdpPost = React.useCallback((path: string, body?: Record<string, unknown>) => {
+    if (!props.serverBaseUrl || !props.workspaceId) return;
+    void fetch(`${props.serverBaseUrl}/workspace/${encodeURIComponent(props.workspaceId)}${path}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${props.serverToken ?? ""}`, "Content-Type": "application/json" },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+  }, [props.serverBaseUrl, props.serverToken, props.workspaceId]);
+
   const navigate = React.useCallback(() => {
-    void getElectronBrowser()?.navigate?.(urlInput);
-  }, [urlInput]);
+    if (isDesktopRuntime()) void getElectronBrowser()?.navigate?.(urlInput);
+    else cdpPost("/browser/navigate", { url: urlInput });
+  }, [urlInput, cdpPost]);
 
   const back = React.useCallback(() => {
-    void getElectronBrowser()?.back?.();
-  }, []);
+    if (isDesktopRuntime()) void getElectronBrowser()?.back?.();
+    else cdpPost("/browser/back");
+  }, [cdpPost]);
 
   const forward = React.useCallback(() => {
-    void getElectronBrowser()?.forward?.();
-  }, []);
+    if (isDesktopRuntime()) void getElectronBrowser()?.forward?.();
+    else cdpPost("/browser/forward");
+  }, [cdpPost]);
 
   const reload = React.useCallback(() => {
-    void getElectronBrowser()?.reload?.();
-  }, []);
+    if (isDesktopRuntime()) void getElectronBrowser()?.reload?.();
+    else cdpPost("/browser/reload");
+  }, [cdpPost]);
 
   const handleUrlKeyDown = React.useCallback((event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") {
@@ -358,7 +392,7 @@ function BrowserPanelContent({
           </>
         ) : (
           <p className="px-2 text-sm text-muted-foreground">
-            Browser panel is only available in the desktop app.
+            {/* noVNC mounts into the container below */}
           </p>
         )}
         <Button
@@ -372,7 +406,9 @@ function BrowserPanelContent({
         </Button>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
-        {isAvailable ? <div ref={contentRef} className="h-full overflow-hidden" /> : null}
+        {isAvailable
+          ? <div ref={contentRef} className="h-full overflow-hidden" />
+          : <div ref={noVncContainerRef} className="h-full overflow-hidden bg-black" />}
       </div>
     </>
   );
@@ -436,7 +472,7 @@ export function SidePanel({
           <PanelEmpty />
         ) : null}
         {activeTab?.type === "browser" ? (
-          <BrowserPanelContent tab={activeTab} onClose={onClose} />
+          <BrowserPanelContent tab={activeTab} onClose={onClose} serverBaseUrl={client?.baseUrl} serverToken={client?.token} workspaceId={workspaceId} />
         ) : activeTab?.type === "artifact" ? (
           <div className="min-h-0 flex-1 overflow-hidden">
             <ArtifactPanel
