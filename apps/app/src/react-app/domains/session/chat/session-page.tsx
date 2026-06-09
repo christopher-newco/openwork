@@ -1155,13 +1155,13 @@ export function SessionPage(props: SessionPageProps) {
             </ResizablePanel>
               {sidePanelOpen ? (
               <>
-                <ResizableHandle withHandle className="hidden lg:flex" />
+                <ResizableHandle withHandle className="flex" />
                 <ResizablePanel
                   panelRef={browserPanelRef}
                   defaultSize={`${activeSidePanel === "extensions" ? Math.max(browserPanelDefaultWidth, 480) : browserPanelDefaultWidth}px`}
                   minSize={activeSidePanel === "extensions" ? "420px" : "320px"}
                   maxSize="70%"
-                  className="min-h-0 overflow-hidden lg:flex lg:flex-col"
+                  className="min-h-0 overflow-hidden flex flex-col"
                 >
                   {activeSidePanel === "extensions" && props.settingsSlot ? (
                     <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-background">

@@ -96,6 +96,8 @@ chromium \
   https://portfolio.audette.io &
 # Start x11vnc: listen on localhost only, no password, share across connections
 x11vnc -display :99 -nopw -listen 127.0.0.1 -rfbport 5900 -forever -shared -quiet &
+# websockify bridges WebSocket on 5901 to raw VNC on 5900
+websockify 127.0.0.1:5901 127.0.0.1:5900 &
 printf '%s\n' "- browser: Xvfb :99 + Chromium + x11vnc ready"
 
 # --- global opencode MCP servers (applies to all workspaces) ---
