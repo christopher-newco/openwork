@@ -5,7 +5,7 @@
  * but backed by `node:http`. This allows the server to run in any Node.js
  * environment (including Electron's main process) without Bun.
  */
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
 import { Readable } from "node:stream";
 
 export type ServeOptions = {
@@ -18,6 +18,8 @@ export type ServeOptions = {
 export type ServeResult = {
   port: number;
   stop: () => void | Promise<void>;
+  /** The raw Node.js http.Server — used to attach upgrade/WebSocket handlers. */
+  httpServer: Server;
 };
 
 function isResponseWritable(nodeRes: ServerResponse): boolean {
@@ -216,6 +218,7 @@ export function serve(options: ServeOptions): Promise<ServeResult> {
       let stopPromise: Promise<void> | null = null;
       resolve({
         port: boundPort,
+        httpServer: server,
         stop: () => {
           if (stopPromise) return stopPromise;
           stopPromise = new Promise<void>((stopResolve, stopReject) => {
