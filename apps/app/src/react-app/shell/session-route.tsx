@@ -1709,6 +1709,7 @@ export function SessionRoute() {
         setProviderConnectedIds,
         setDisabledProviders: setDisabledProviderIds,
         markOpencodeConfigReloadRequired: () => {
+          if (!isDesktopRuntime()) return;
           reloadCoordinator.markReloadRequired("config", {
             type: "config",
             name: "opencode.json",
