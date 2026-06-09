@@ -177,6 +177,7 @@ export const BUILT_IN_OPENWORK_EXTENSION_MANIFESTS: OpenWorkExtensionManifest[] 
     ],
     lifecycle: { reload: ["plugins", "agents"], detection: ["plugin:opencode-chrome-devtools"] },
     defaultEnabled: true,
+    platform: ["darwin", "linux", "windows"],
   },
   {
     schemaVersion: 1,
@@ -254,6 +255,7 @@ export const BUILT_IN_OPENWORK_EXTENSION_MANIFESTS: OpenWorkExtensionManifest[] 
       { type: "env-set", ref: "OPENAI_API_KEY", label: "OpenAI API key" },
     ],
     lifecycle: { reload: ["config"], detection: ["env:OPENAI_API_KEY"] },
+    platform: ["darwin", "linux", "windows"],
   },
   {
     schemaVersion: 1,
@@ -290,6 +292,7 @@ export const BUILT_IN_OPENWORK_EXTENSION_MANIFESTS: OpenWorkExtensionManifest[] 
       { type: "env-set", ref: "OPENAI_API_KEY", label: "OpenAI API key" },
     ],
     lifecycle: { reload: ["config"], detection: ["env:OPENAI_REALTIME_API_KEY", "env:OPENAI_API_KEY"] },
+    platform: ["darwin", "linux", "windows"],
   },
   {
     schemaVersion: 1,
