@@ -346,5 +346,6 @@ export const BUILT_IN_OPENWORK_EXTENSION_MANIFESTS: OpenWorkExtensionManifest[] 
       { type: "provider-connected", ref: "ollama", label: "Ollama provider" },
     ],
     lifecycle: { reload: ["config"], detection: ["provider:ollama"] },
+    platform: ["darwin", "linux", "windows"],
   },
 ];
