@@ -59,10 +59,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { ConfirmModal } from "@/react-app/design-system/modals/confirm-modal";
 import {
-import { isDesktopRuntime } from "../../../../app/utils";
   SelectMenu,
   type SelectMenuOption,
 } from "@/react-app/design-system/select-menu";
+import { isDesktopRuntime } from "../../../../app/utils";
 
 type InstallResult = { ok: boolean; message: string };
 type SkillsFilter = "all" | "installed" | "cloud" | "hub";
