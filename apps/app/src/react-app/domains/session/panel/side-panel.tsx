@@ -490,8 +490,14 @@ export function SidePanel({
         {!activeTab ? (
           <PanelEmpty />
         ) : null}
-        {activeTab?.type === "browser" ? (
-          <BrowserPanelContent tab={activeTab} onClose={onClose} serverBaseUrl={client?.baseUrl} serverToken={client?.token} workspaceId={workspaceId} />
+        {activeTab?.type === "browser" || (!isBrowserAvailable && typeof window !== "undefined") ? (
+          <BrowserPanelContent
+            tab={activeTab ?? { id: "web-browser", type: "browser", label: "Browser", url: "" }}
+            onClose={onClose}
+            serverBaseUrl={client?.baseUrl}
+            serverToken={client?.token}
+            workspaceId={workspaceId}
+          />
         ) : activeTab?.type === "artifact" ? (
           <div className="min-h-0 flex-1 overflow-hidden">
             <ArtifactPanel

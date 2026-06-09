@@ -3695,6 +3695,46 @@ function createRoutes(
     });
   });
 
+  addRoute(routes, "GET", "/workspace/:id/files/list", "client", async (ctx) => {
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const pathParam = new URL(ctx.request.url).searchParams.get("path") ?? "";
+    const root = workspace.path;
+    const dir = pathParam ? join(root, pathParam) : root;
+    const { readdir, stat } = await import("node:fs/promises");
+    const { join: joinPath, relative: relativePath, sep: pathSep } = await import("node:path");
+    try {
+      const names = await readdir(dir);
+      const entries = await Promise.all(
+        names
+          .filter((n) => !n.startsWith("."))
+          .map(async (name) => {
+            const full = joinPath(dir, name);
+            try {
+              const s = await stat(full);
+              return {
+                name,
+                path: relativePath(root, full).split(pathSep).join("/"),
+                kind: s.isDirectory() ? "dir" : "file",
+                size: s.isFile() ? s.size : 0,
+                updatedAt: s.mtimeMs,
+              };
+            } catch {
+              return null;
+            }
+          }),
+      );
+      const sorted = entries
+        .filter(Boolean)
+        .sort((a: any, b: any) => {
+          if (a.kind !== b.kind) return a.kind === "dir" ? -1 : 1;
+          return a.name.localeCompare(b.name);
+        });
+      return jsonResponse({ entries: sorted });
+    } catch {
+      return jsonResponse({ entries: [] });
+    }
+  });
+
   addRoute(routes, "GET", "/workspace/:id/files/raw", "client", async (ctx) => {
     const workspace = await resolveWorkspace(config, ctx.params.id);
     const requested = (ctx.url.searchParams.get("path") ?? "").trim();
