@@ -137,6 +137,7 @@ export function useElectronUpdaterState(options: UseElectronUpdaterStateOptions)
   const downloadUpdate = useCallback(async (channelOverride?: ReleaseChannel) => {
     const bridge = electronUpdaterBridge();
     if (!bridge?.download) {
+      if (!isElectronRuntime()) return;
       const message = "Electron updater downloads are available only in the Electron desktop app.";
       setUpdateStatus({ state: "error", message });
       setError(message);
@@ -182,6 +183,7 @@ export function useElectronUpdaterState(options: UseElectronUpdaterStateOptions)
     const activeReleaseChannel = channelOverride ?? releaseChannel;
     const bridge = electronUpdaterBridge();
     if (!bridge?.check) {
+      if (!isElectronRuntime()) return;
       const message = "Electron update checks are available only in the Electron desktop app.";
       setUpdateStatus({ state: "error", message });
       setError(message);
@@ -248,6 +250,7 @@ export function useElectronUpdaterState(options: UseElectronUpdaterStateOptions)
   const installUpdateAndRestart = useCallback(async () => {
     const bridge = electronUpdaterBridge();
     if (!bridge?.installAndRestart) {
+      if (!isElectronRuntime()) return;
       const message = "Electron update install is available only in the Electron desktop app.";
       setUpdateStatus({ state: "error", message });
       setError(message);
