@@ -1231,6 +1231,12 @@ export function SessionRoute() {
         // agent while the session page is open.
         if (currentCursor === undefined || currentCursor === null) return;
         for (const event of response.items ?? []) {
+          // On web deployments the opencode engine is not user-reloadable — it
+          // restarts only when the container restarts. Suppress config-type
+          // reload events (triggered by the org model-catalog sync writing
+          // opencode.json) so the banner never shows for something the user
+          // cannot act on. Skills/plugins/MCP events are still surfaced.
+          if (!isDesktopRuntime() && event.reason === "config") continue;
           reloadCoordinator.markReloadRequired(event.reason, event.trigger);
         }
       } catch {
