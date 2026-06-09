@@ -858,48 +858,50 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
     idleTimeout: 120,
   });
 
-  // VNC WebSocket proxy: authenticates then TCP-tunnels to websockify on
-  // localhost:5901. websockify handles WS↔VNC protocol and proxies to x11vnc
-  // on port 5900. Auth via ?token= query param.
+  // VNC WebSocket proxy: authenticates (sync check against config.token)
+  // then TCP-tunnels to websockify on localhost:5901, which handles the
+  // WebSocket handshake and proxies raw VNC to x11vnc on port 5900.
   server.httpServer.on("upgrade", (req, socket, head) => {
+    console.log("[vnc-proxy] upgrade event fired:", req.url);
     const url = new URL(req.url ?? "/", "http://localhost");
     if (!/^\/workspace\/[^/]+\/browser\/vnc$/.test(url.pathname)) {
-      socket.destroy();
+      socket.write("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
+      socket.end();
       return;
     }
-    const token = url.searchParams.get("token") ?? "";
-    tokens.scopeForToken(token).then((scope) => {
-      if (!scope) {
-        socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
-        socket.destroy();
-        return;
+    // Synchronous token check — compare against the server config token
+    const reqToken = url.searchParams.get("token") ?? "";
+    if (!reqToken || reqToken !== config.token) {
+      socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
+      socket.end();
+      return;
+    }
+    // Forward the complete HTTP upgrade request to websockify on 5901.
+    // websockify performs the WS handshake and proxies VNC frames.
+    const proxy = net.createConnection(5901, "127.0.0.1");
+    proxy.on("error", (err) => {
+      console.log("[vnc-proxy] websockify connection error:", err.message);
+      if (!socket.destroyed) {
+        socket.write("HTTP/1.1 503 VNC Service Unavailable\r\nConnection: close\r\n\r\n");
+        socket.end();
       }
-      // Forward the complete HTTP upgrade request to websockify on 5901.
-      // websockify performs the WS handshake with the client and proxies to VNC.
-      const proxy = net.createConnection(5901, "127.0.0.1");
-      proxy.on("error", () => {
-        if (!socket.destroyed) {
-          socket.write("HTTP/1.1 503 VNC Service Unavailable\r\nConnection: close\r\n\r\n");
-          socket.destroy();
-        }
-      });
-      proxy.once("connect", () => {
-        // Reconstruct and forward the original HTTP upgrade request
-        let raw = `GET ${req.url} HTTP/1.1\r\n`;
-        for (const [k, v] of Object.entries(req.headers as Record<string, string>)) {
-          raw += `${k}: ${v}\r\n`;
-        }
-        raw += "\r\n";
-        proxy.write(raw);
-        if (head.length > 0) proxy.write(head);
-        socket.pipe(proxy);
-        proxy.pipe(socket);
-        socket.on("error", () => proxy.destroy());
-        proxy.on("error", () => { if (!socket.destroyed) socket.destroy(); });
-        socket.on("close", () => proxy.destroy());
-        proxy.on("close", () => { if (!socket.destroyed) socket.destroy(); });
-      });
-    }).catch(() => { socket.destroy(); });
+    });
+    proxy.once("connect", () => {
+      console.log("[vnc-proxy] forwarding to websockify");
+      let raw = `GET ${req.url} HTTP/1.1\r\n`;
+      for (const [k, v] of Object.entries(req.headers as Record<string, string>)) {
+        raw += `${k}: ${v}\r\n`;
+      }
+      raw += "\r\n";
+      proxy.write(raw);
+      if (head.length > 0) proxy.write(head);
+      socket.pipe(proxy);
+      proxy.pipe(socket);
+      socket.on("error", () => proxy.destroy());
+      proxy.on("error", () => { if (!socket.destroyed) socket.destroy(); });
+      socket.on("close", () => proxy.destroy());
+      proxy.on("close", () => { if (!socket.destroyed) socket.destroy(); });
+    });
   });
 
   return {
@@ -3690,6 +3692,38 @@ function createRoutes(
     } finally {
       rm(tmpDir, { recursive: true, force: true }).catch(() => null);
     }
+  });
+
+  // Browser screenshot: grabs the current X display frame as PNG.
+  // Used as fallback when WebSocket VNC is unavailable.
+  addRoute(routes, "GET", "/workspace/:id/browser/screenshot", "client", async (ctx) => {
+    const { execFile } = await import("node:child_process");
+    const { readFile, unlink } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join: joinPath } = await import("node:path");
+    const out = joinPath(tmpdir(), `ow-screenshot-${Date.now()}.png`);
+    await new Promise<void>((resolve, reject) => {
+      execFile("scrot", ["-z", "-q", "70", out], { env: { ...process.env, DISPLAY: ":99" } }, (err) => {
+        err ? reject(err) : resolve();
+      });
+      setTimeout(() => reject(new Error("scrot timeout")), 5000);
+    });
+    const bytes = await readFile(out);
+    unlink(out).catch(() => null);
+    return new Response(bytes, { status: 200, headers: { "Content-Type": "image/png", "Cache-Control": "no-store" } });
+  });
+
+  // Check if a workspace is attached to a folder path (used before delete).
+  addRoute(routes, "GET", "/workspace/:id/files/check-attachments", "client", async (ctx) => {
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const pathParam = new URL(ctx.request.url).searchParams.get("path") ?? "";
+    if (!pathParam) throw new ApiError(400, "invalid_payload", "path is required");
+    const { join: joinPath } = await import("node:path");
+    const targetPath = joinPath(workspace.path, pathParam);
+    const matchedWorkspaces = (await listWorkspaces(config)).workspaces.filter(
+      (w) => w.path === targetPath || w.path.startsWith(targetPath + "/"),
+    );
+    return jsonResponse({ attachedWorkspaceIds: matchedWorkspaces.map((w) => w.id) });
   });
 
   addRoute(routes, "POST", "/workspace/:id/files/mkdir", "client", async (ctx) => {
