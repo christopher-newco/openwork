@@ -84,6 +84,7 @@ sleep 1
 chromium \
   --no-sandbox \
   --disable-gpu \
+  --use-gl=swiftshader \
   --disable-dev-shm-usage \
   --disable-extensions \
   --disable-notifications \
@@ -93,9 +94,11 @@ chromium \
   --remote-debugging-address=127.0.0.1 \
   --window-size=1280,800 \
   --window-position=0,0 \
+  --force-device-scale-factor=1 \
+  --start-maximized \
   https://portfolio.audette.io &
 # Start x11vnc: listen on localhost only, no password, share across connections
-x11vnc -display :99 -nopw -listen 127.0.0.1 -rfbport 5900 -forever -shared -quiet &
+x11vnc -display :99 -nopw -listen 127.0.0.1 -rfbport 5900 -forever -shared -noxdamage -noscr -repeat -speeds modem &
 # websockify bridges WebSocket on 5901 to raw VNC on 5900
 websockify 127.0.0.1:5901 127.0.0.1:5900 &
 printf '%s\n' "- browser: Xvfb :99 + Chromium + x11vnc ready"

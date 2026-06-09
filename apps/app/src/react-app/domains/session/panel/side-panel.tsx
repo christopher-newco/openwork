@@ -220,6 +220,30 @@ function BrowserPanelContent({
     }
   }, [tab.id, tab.url]);
 
+  // On web: poll browser/state every 2s to keep URL bar in sync with Chromium navigation
+  React.useEffect(() => {
+    if (isDesktopRuntime() || !serverBaseUrl || !serverToken || !workspaceId) return;
+    let active = true;
+    const poll = async () => {
+      if (!active || urlFocusedRef.current) return;
+      try {
+        const res = await fetch(
+          `${serverBaseUrl}/workspace/${encodeURIComponent(workspaceId)}/browser/state`,
+          { headers: { Authorization: `Bearer ${serverToken}` } }
+        );
+        if (res.ok) {
+          const { url } = await res.json() as { url?: string };
+          if (url && url !== "about:blank" && active && !urlFocusedRef.current) {
+            setUrlInput(url);
+          }
+        }
+      } catch { /* ignore */ }
+      if (active) setTimeout(poll, 2000);
+    };
+    void poll();
+    return () => { active = false; };
+  }, [serverBaseUrl, serverToken, workspaceId]);
+
   const cdpPost = React.useCallback((path: string, body?: Record<string, unknown>) => {
     if (!serverBaseUrl || !workspaceId) return;
     void fetch(`${serverBaseUrl}/workspace/${encodeURIComponent(workspaceId)}${path}`, {
