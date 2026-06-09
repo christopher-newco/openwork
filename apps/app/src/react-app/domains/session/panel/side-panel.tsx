@@ -38,6 +38,7 @@ import {
   sameBounds,
 } from "./utils";
 import { isDesktopRuntime } from "../../../../app/utils";
+import { resolveOpenworkConnection } from "../../../shell/openwork-connection";
 // noVNC loaded dynamically at runtime — avoids bundling a 200KB VNC library
 // that's only needed on web deployments with the browser panel active.
 let rfbPromise: Promise<typeof import("@novnc/novnc/core/rfb.js")["default"]> | null = null;
@@ -165,23 +166,44 @@ function BrowserPanelContent({
   const noVncContainerRef = React.useRef<HTMLDivElement>(null);
   const rfbRef = React.useRef<any>(null);
 
-  // noVNC WebSocket VNC connection for live interactive browser on web
+  // noVNC WebSocket VNC connection for live interactive browser on web.
+  // Falls back to resolving the connection from stored settings if props are missing,
+  // so the browser panel works even when no session is open.
   React.useEffect(() => {
-    if (isDesktopRuntime() || !noVncContainerRef.current || !serverBaseUrl || !serverToken || !workspaceId) return;
+    if (isDesktopRuntime() || !noVncContainerRef.current) return;
     const container = noVncContainerRef.current;
-    const wsBase = serverBaseUrl
-      .replace("https://", "wss://")
-      .replace("http://", "ws://")
-      .replace(/[/]+$/, "");
-    const wsUrl = `${wsBase}/workspace/${encodeURIComponent(workspaceId)}/browser/vnc?token=${encodeURIComponent(serverToken)}`;
     let rfb: any = null;
     let cancelled = false;
-    void loadRFB().then((RFB) => {
-      if (cancelled || !container) return;
-      rfb = new RFB(container, wsUrl, { wsProtocols: ["binary"] });
-      rfb.scaleViewport = true;
-      rfbRef.current = rfb;
-    });
+
+    const connect = async () => {
+      // Use passed props if available; otherwise read from stored worker settings
+      let base = serverBaseUrl ?? "";
+      let token = serverToken ?? "";
+      let wsId = workspaceId ?? "";
+      if (!base || !token || !wsId) {
+        try {
+          const conn = await resolveOpenworkConnection();
+          base = conn.normalizedBaseUrl;
+          token = conn.resolvedToken;
+          // workspaceId comes from the predefined worker entry in localStorage
+          const pw = typeof window !== "undefined"
+            ? (() => { try { return JSON.parse(localStorage.getItem("openwork.predefinedWorker") ?? "{}"); } catch { return {}; } })()
+            : {};
+          wsId = pw.workspaceId ?? wsId;
+        } catch { return; }
+      }
+      if (!base || !token || !wsId || cancelled) return;
+      const wsBase = base.replace("https://","wss://").replace("http://","ws://").replace(/[/]+$/,"");
+      const wsUrl = `${wsBase}/workspace/${encodeURIComponent(wsId)}/browser/vnc?token=${encodeURIComponent(token)}`;
+      console.log("[browser-panel] connecting noVNC to:", wsUrl.replace(/token=[^&]+/, "token=***"));
+      void loadRFB().then((RFB) => {
+        if (cancelled || !container) return;
+        rfb = new RFB(container, wsUrl, { wsProtocols: ["binary"] });
+        rfb.scaleViewport = true;
+        rfbRef.current = rfb;
+      });
+    };
+    void connect();
     return () => {
       cancelled = true;
       rfb?.disconnect();
