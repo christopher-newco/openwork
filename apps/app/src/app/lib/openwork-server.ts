@@ -1511,6 +1511,10 @@ export function createOpenworkServerClient(options: { baseUrl: string; token?: s
     listWorkspaceFiles: (workspaceId: string, path?: string) =>
   navigateBrowser: (workspaceId: string, url: string) =>
     requestJson<{ ok: boolean }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/browser/navigate`, {
+      token, hostToken, method: "POST", body: { url }, timeoutMs: 5000,
+    }).catch(() => ({ ok: false as const })),
+
+    requestJson<{ ok: boolean }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/browser/navigate`, {
       token, hostToken, method: "POST", timeoutMs: 5000,
       body: JSON.stringify({ url }),
       headers: { "Content-Type": "application/json" },

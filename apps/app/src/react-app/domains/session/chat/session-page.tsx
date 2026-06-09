@@ -465,8 +465,9 @@ export function SessionPage(props: SessionPageProps) {
         return window.__OPENWORK_ELECTRON__?.browser?.openUrl?.(url, provider);
       }
       // Web: navigate via CDP
-      if (props.openworkServerClient && props.runtimeWorkspaceId) {
-        void props.openworkServerClient.navigateBrowser?.(props.runtimeWorkspaceId, url)
+      const wsId = props.runtimeWorkspaceId;
+      if (props.openworkServerClient && wsId) {
+        void (props.openworkServerClient as any).navigateBrowser?.(wsId, url)
           .catch(() => null);
       }
       return { ok: true };
