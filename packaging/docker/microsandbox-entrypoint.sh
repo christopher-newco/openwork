@@ -93,7 +93,7 @@ chromium \
   --remote-debugging-address=127.0.0.1 \
   --window-size=1280,800 \
   --window-position=0,0 \
-  about:blank &
+  https://portfolio.audette.io &
 # Start x11vnc: listen on localhost only, no password, share across connections
 x11vnc -display :99 -nopw -listen 127.0.0.1 -rfbport 5900 -forever -shared -quiet &
 printf '%s\n' "- browser: Xvfb :99 + Chromium + x11vnc ready"
