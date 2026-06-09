@@ -1173,9 +1173,9 @@ export function SessionPage(props: SessionPageProps) {
                       sessionId={props.selectedSessionId}
                       onClose={closeRightPane}
                     />
-                  ) : activeSidePanel === "panel" && props.selectedSessionId ? (
+                  ) : activeSidePanel === "panel" && (props.selectedSessionId || !isDesktopRuntime()) ? (
                     <SidePanel
-                      sessionId={props.selectedSessionId}
+                      sessionId={props.selectedSessionId ?? ""}
                       client={props.openworkServerClient}
                       workspaceId={props.runtimeWorkspaceId}
                       workspaceRoot={props.selectedWorkspaceRoot}
