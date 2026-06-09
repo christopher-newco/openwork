@@ -3696,6 +3696,14 @@ function createRoutes(
 
   // Browser screenshot: grabs the current X display frame as PNG.
   // Used as fallback when WebSocket VNC is unavailable.
+  // Debug: log headers when browser/vnc is hit as a regular GET
+  addRoute(routes, "GET", "/workspace/:id/browser/vnc-debug", "none", async (ctx) => {
+    const headers: Record<string, string> = {};
+    ctx.request.headers.forEach((v, k) => { headers[k] = v; });
+    console.log("[vnc-debug] GET /browser/vnc-debug headers:", JSON.stringify(headers));
+    return jsonResponse({ headers, note: "Check worker logs for vnc-debug entry" });
+  });
+
   addRoute(routes, "GET", "/workspace/:id/browser/screenshot", "client", async (ctx) => {
     const { execFile } = await import("node:child_process");
     const { readFile, unlink } = await import("node:fs/promises");
