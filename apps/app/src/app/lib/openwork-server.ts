@@ -1509,16 +1509,6 @@ export function createOpenworkServerClient(options: { baseUrl: string; token?: s
       ),
 
     listWorkspaceFiles: (workspaceId: string, path?: string) =>
-  navigateBrowser: (workspaceId: string, url: string) =>
-    requestJson<{ ok: boolean }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/browser/navigate`, {
-      token, hostToken, method: "POST", body: { url }, timeoutMs: 5000,
-    }).catch(() => ({ ok: false as const })),
-
-    requestJson<{ ok: boolean }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/browser/navigate`, {
-      token, hostToken, method: "POST", timeoutMs: 5000,
-      body: JSON.stringify({ url }),
-      headers: { "Content-Type": "application/json" },
-    }).catch(() => ({ ok: false })),
       requestJson<{
         ok: boolean;
         path: string;
@@ -1528,6 +1518,11 @@ export function createOpenworkServerClient(options: { baseUrl: string; token?: s
         `/workspace/${encodeURIComponent(workspaceId)}/files/list${path ? `?path=${encodeURIComponent(path)}` : ""}`,
         { token, hostToken },
       ),
+
+    navigateBrowser: (workspaceId: string, url: string) =>
+      requestJson<{ ok: boolean }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/browser/navigate`, {
+        token, hostToken, method: "POST", body: { url }, timeoutMs: 5000,
+      }).catch(() => ({ ok: false as const })),
 
     writeWorkspaceFile: (
       workspaceId: string,
