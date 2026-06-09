@@ -221,6 +221,22 @@ export function FileBrowserPage({ onAddWorkspace }: { onAddWorkspace?: (folderPa
 
   const deleteEntry = async (entry: Entry) => {
     if (!conn) return;
+    // Block folder deletion if a workspace is attached to it
+    if (entry.kind === "dir") {
+      try {
+        const r = await fetch(
+          `${conn.baseUrl}/workspace/${encodeURIComponent(conn.workspaceId)}/files/check-attachments?path=${encodeURIComponent(entry.path)}`,
+          { headers: authHeaders() }
+        );
+        if (r.ok) {
+          const { attachedWorkspaceIds } = await r.json() as { attachedWorkspaceIds: string[] };
+          if (attachedWorkspaceIds.length > 0) {
+            window.alert(`Cannot delete "${entry.name}" — it has an attached workspace. Remove the workspace from the sidebar first.`);
+            return;
+          }
+        }
+      } catch { /* ignore, proceed to confirm */ }
+    }
     const label = entry.kind === "dir" ? `folder "${entry.name}" and all its contents` : `file "${entry.name}"`;
     if (!window.confirm(`Delete ${label}? This cannot be undone.`)) return;
     try {

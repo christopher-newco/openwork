@@ -161,27 +161,32 @@ function BrowserPanelContent({
   const urlInputRef = React.useRef<HTMLInputElement>(null);
   const rfbRef = React.useRef<any>(null);
 
+  // Screenshot polling for web: poll /browser/screenshot every 200ms for a live feed.
+  const [screenshotSrc, setScreenshotSrc] = React.useState<string>("");
+  const [screenshotError, setScreenshotError] = React.useState<string>("");
   React.useEffect(() => {
-    if (isDesktopRuntime() || !noVncContainerRef.current || !props.serverBaseUrl || !props.serverToken || !props.workspaceId) return;
-    const container = noVncContainerRef.current;
-    const wsBase = props.serverBaseUrl
-      .replace("https://", "wss://")
-      .replace("http://", "ws://")
-      .replace(/[/]+$/, "");
-    const wsUrl = `${wsBase}/workspace/${encodeURIComponent(props.workspaceId)}/browser/vnc?token=${encodeURIComponent(props.serverToken)}`;
-    let rfb: any = null;
-    let cancelled = false;
-    void loadRFB().then((RFB) => {
-      if (cancelled || !container) return;
-      rfb = new RFB(container, wsUrl, { wsProtocols: ["binary"] });
-      rfb.scaleViewport = true;
-      rfbRef.current = rfb;
-    });
-    return () => {
-      cancelled = true;
-      rfb?.disconnect();
-      rfbRef.current = null;
+    if (isDesktopRuntime() || !props.serverBaseUrl || !props.serverToken || !props.workspaceId) return;
+    let active = true;
+    const base = props.serverBaseUrl.replace(/\/+$/, "");
+    const url = `${base}/workspace/${encodeURIComponent(props.workspaceId)}/browser/screenshot`;
+    const poll = async () => {
+      if (!active) return;
+      try {
+        const res = await fetch(url, { headers: { Authorization: `Bearer ${props.serverToken}` } });
+        if (!res.ok) throw new Error(`Screenshot unavailable (${res.status})`);
+        const blob = await res.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        if (active) {
+          setScreenshotSrc(prev => { if (prev) URL.revokeObjectURL(prev); return blobUrl; });
+          setScreenshotError("");
+        }
+      } catch (e) {
+        if (active) setScreenshotError(e instanceof Error ? e.message : "Screenshot unavailable");
+      }
+      if (active) setTimeout(poll, 200);
     };
+    void poll();
+    return () => { active = false; };
   }, [props.serverBaseUrl, props.serverToken, props.workspaceId]);
   const shownRef = React.useRef(false);
   const boundsFrameRef = React.useRef<number | null>(null);
@@ -427,7 +432,17 @@ function BrowserPanelContent({
       <div className="min-h-0 flex-1 overflow-hidden">
         {isAvailable
           ? <div ref={contentRef} className="h-full overflow-hidden" />
-          : <div ref={noVncContainerRef} className="h-full overflow-hidden bg-black" />}
+          : (
+          <div className="h-full overflow-hidden bg-black flex flex-col">
+            {screenshotError ? (
+              <div className="flex flex-1 items-center justify-center text-xs text-white/40">{screenshotError}</div>
+            ) : screenshotSrc ? (
+              <img src={screenshotSrc} alt="Browser" draggable={false} className="h-full w-full object-contain" />
+            ) : (
+              <div className="flex flex-1 items-center justify-center text-xs text-white/40">Connecting to browser…</div>
+            )}
+          </div>
+        )}
       </div>
     </>
   );
