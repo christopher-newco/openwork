@@ -84,7 +84,6 @@ sleep 1
 chromium \
   --no-sandbox \
   --disable-gpu \
-  --use-gl=swiftshader \
   --disable-dev-shm-usage \
   --disable-extensions \
   --disable-notifications \
@@ -98,7 +97,7 @@ chromium \
   --start-maximized \
   about:blank &
 # Start x11vnc: listen on localhost only, no password, share across connections
-x11vnc -display :99 -nopw -listen 127.0.0.1 -rfbport 5900 -forever -shared -noxdamage -noscr -repeat -speeds modem &
+x11vnc -display :99 -nopw -listen 127.0.0.1 -rfbport 5900 -forever -shared -noxdamage -wait 10 -defer 0 &
 # websockify bridges WebSocket on 5901 to raw VNC on 5900
 websockify 127.0.0.1:5901 127.0.0.1:5900 &
 printf '%s\n' "- browser: Xvfb :99 + Chromium + x11vnc ready"
