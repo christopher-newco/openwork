@@ -101,6 +101,14 @@ const EnvSchema = z.object({
   STRIPE_SEAT_PRICE_ID: z.string().optional(),
   STRIPE_BILLING_SUCCESS_URL: z.string().optional(),
   STRIPE_BILLING_CANCEL_URL: z.string().optional(),
+  COOKIE_DOMAIN: z.string().optional(),
+  // Headless admin service account: when set, a seeded admin user + long-lived
+  // session whose token equals this value is ensured at startup, enabling
+  // automation to authenticate via `Authorization: Bearer <token>`.
+  DEN_SERVICE_ACCOUNT_TOKEN: z.string().min(32).optional(),
+  DEN_SERVICE_ACCOUNT_EMAIL: z.string().optional(),
+  RAG_DATABASE_URL: z.string().min(1).optional(),
+  RAG_EMBED_API_KEY: z.string().min(1).optional(),
 }).superRefine((value, ctx) => {
   // Auto-detect database mode from URL if not explicitly set
   let inferredMode = value.DB_MODE
@@ -295,6 +303,10 @@ export const env = {
     benefitId: parsed.POLAR_BENEFIT_ID,
     successUrl: parsed.POLAR_SUCCESS_URL,
     returnUrl: parsed.POLAR_RETURN_URL,
+  },
+  rag: {
+    databaseUrl: optionalString(parsed.RAG_DATABASE_URL),
+    embedApiKey: optionalString(parsed.RAG_EMBED_API_KEY),
   },
   daytona: {
     envPath: optionalString(parsed.OPENWORK_DAYTONA_ENV_PATH),
