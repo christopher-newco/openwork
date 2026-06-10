@@ -187,6 +187,10 @@ export function serve(options: ServeOptions): Promise<ServeResult> {
     });
 
     try {
+      // Log ALL browser VNC requests regardless of method/headers
+      if ((nodeReq.url ?? "").includes("/browser/vnc") || (nodeReq.url ?? "").includes("/ws-test")) {
+        console.log(`[request] ${nodeReq.method} ${nodeReq.url} conn=${nodeReq.headers["connection"]} upgrade=${nodeReq.headers["upgrade"]} wskey=${!!nodeReq.headers["sec-websocket-key"]}`);
+      }
       const webReq = toWebRequest(nodeReq, hostname, boundPort);
       if ((nodeReq.url ?? "").includes("/browser/vnc")) {
         console.log("[serve-node] /browser/vnc HTTP hit, upgrade:", nodeReq.headers["upgrade"], "ws-key:", !!nodeReq.headers["sec-websocket-key"]);
