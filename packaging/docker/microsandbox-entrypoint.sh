@@ -84,6 +84,8 @@ sleep 1
 chromium \
   --no-sandbox \
   --disable-gpu \
+  --disable-gpu-compositing \
+  --disable-software-rasterizer=0 \
   --disable-dev-shm-usage \
   --disable-extensions \
   --disable-notifications \
