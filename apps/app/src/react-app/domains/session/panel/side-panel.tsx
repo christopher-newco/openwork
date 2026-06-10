@@ -387,7 +387,7 @@ function BrowserPanelContent({
   return (
     <>
       <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border bg-background px-2 mac:bg-background/80 mac:backdrop-blur-2xl mac:backdrop-saturate-150">
-        {isAvailable ? (
+        {(isAvailable || !isDesktopRuntime()) ? (
           <>
             <Tooltip>
               <TooltipTrigger
@@ -396,7 +396,6 @@ function BrowserPanelContent({
                     variant="ghost"
                     size="icon-sm"
                     onClick={back}
-                    disabled={!tab.canGoBack}
                     aria-label="Go back"
                   >
                     <ArrowLeft />
@@ -412,7 +411,6 @@ function BrowserPanelContent({
                     variant="ghost"
                     size="icon-sm"
                     onClick={forward}
-                    disabled={!tab.canGoForward}
                     aria-label="Go forward"
                   >
                     <ArrowRight />
@@ -460,11 +458,7 @@ function BrowserPanelContent({
               </InputGroupAddon>
             </InputGroup>
           </>
-        ) : (
-          <p className="px-2 text-sm text-muted-foreground">
-            {/* noVNC mounts into the container below */}
-          </p>
-        )}
+        ) : null}
         <Button
           variant="ghost"
           size="icon-sm"
