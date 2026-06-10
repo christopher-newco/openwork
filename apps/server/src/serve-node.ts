@@ -163,10 +163,19 @@ export function serve(options: ServeOptions): Promise<ServeResult> {
   const server = createServer(async (nodeReq, nodeRes) => {
     // Re-emit as 'upgrade' event if this is a WebSocket upgrade forwarded as a
     // regular HTTP request (some reverse proxies like Render/nginx do this).
-    if (nodeReq.headers["upgrade"]?.toLowerCase() === "websocket") {
+    // Handle WebSocket upgrades - Cloudflare strips Upgrade/Connection headers (hop-by-hop)
+    // but keeps Sec-WebSocket-Key. Detect either way.
+    const isWsUpgrade = nodeReq.headers["upgrade"]?.toLowerCase() === "websocket" ||
+      !!nodeReq.headers["sec-websocket-key"];
+    if (isWsUpgrade) {
+      // Add back headers that Cloudflare stripped so the upgrade handler works
+      if (!nodeReq.headers["upgrade"]) {
+        nodeReq.headers["upgrade"] = "websocket";
+        nodeReq.headers["connection"] = "upgrade";
+      }
       console.log("[serve-node] WebSocket upgrade via request handler:", nodeReq.url);
       server.emit("upgrade", nodeReq, nodeReq.socket, Buffer.alloc(0));
-      nodeRes.socket?.unref(); // detach response so socket stays open
+      nodeRes.socket?.unref();
       return;
     }
     nodeRes.on("error", (error) => {
