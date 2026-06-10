@@ -227,7 +227,28 @@ export function serve(options: ServeOptions): Promise<ServeResult> {
       }
       reject(error);
     });
-    server.listen(port, hostname, () => {
+    // TCP-level connection sniffer: logs the first bytes of every connection
+  // to diagnose whether Render sends WebSocket frames without HTTP headers
+  server.on("connection", (socket) => {
+    socket.once("data", (chunk) => {
+      const hex = chunk.slice(0, 8).toString("hex");
+      const ascii = chunk.slice(0, 20).toString("ascii").replace(/[\x00-\x1f]/g, ".");
+      const isWsFrame = (chunk[0] === 0x82 || chunk[0] === 0x81) && chunk.length > 2;
+      const isHttp = chunk[0] === 0x47 || chunk[0] === 0x50 || chunk[0] === 0x44; // GET/POST/DELETE
+      console.log(`[tcp-sniff] new conn: ${hex} "${ascii}" ws=${isWsFrame} http=${isHttp}`);
+      // Put data back for HTTP parser
+      if (!isWsFrame) {
+        socket.unshift(chunk);
+      } else {
+        // Raw WebSocket frame arrived — Render sent frames without HTTP headers
+        // Emit custom event so the VNC handler can intercept
+        console.log("[tcp-sniff] raw WebSocket frame on connection — Render bypass mode");
+        (server as any).emit("raw-ws-connection", socket, chunk);
+      }
+    });
+  });
+
+  server.listen(port, hostname, () => {
       const addr = server.address();
       if (addr && typeof addr === "object") {
         boundPort = addr.port;
