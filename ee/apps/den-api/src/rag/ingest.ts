@@ -24,7 +24,7 @@ export interface IngestResult {
 }
 
 function sha256(data: Buffer): string {
-  return crypto.createHash("sha256").update(data).digest("hex")
+  return crypto.createHash("sha256").update(data as unknown as Uint8Array).digest("hex")
 }
 
 export async function ingestFile(params: IngestParams): Promise<IngestResult> {

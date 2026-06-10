@@ -13,7 +13,9 @@ const SUPPORTED_TYPES = new Set([
 
 async function getPdfParse() {
   const mod = await import("pdf-parse")
-  return mod.default
+  // pdf-parse exports the function directly (ESM) or as .default (CJS)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (mod as any).default ?? mod
 }
 
 export async function extractText(bytes: Buffer, mimeType: string): Promise<string> {
