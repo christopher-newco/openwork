@@ -66,6 +66,11 @@
       "development": "./src/schema/telemetry.ts",
       "default": "./dist/schema/telemetry.js"
     },
+    "./schema/rag": {
+      "types": "./src/schema/rag.ts",
+      "development": "./src/schema/rag.ts",
+      "default": "./dist/schema/rag.js"
+    },
     "./drizzle": {
       "types": "./src/drizzle.ts",
       "development": "./src/drizzle.ts",
@@ -77,7 +82,9 @@
     "build:utils": "pnpm --dir ../utils run build",
     "db:generate": "pnpm run build && node --import tsx ./node_modules/drizzle-kit/bin.cjs generate --config drizzle.config.ts",
     "db:migrate": "pnpm run build && node --import tsx ./node_modules/drizzle-kit/bin.cjs migrate --config drizzle.config.ts",
-    "db:push": "pnpm run build && node --import tsx ./node_modules/drizzle-kit/bin.cjs push --config drizzle.config.ts"
+    "db:push": "pnpm run build && node --import tsx ./node_modules/drizzle-kit/bin.cjs push --config drizzle.config.ts",
+    "rag:generate": "tsx ./node_modules/.bin/drizzle-kit generate --config drizzle.rag.config.ts",
+    "rag:push": "tsx ./node_modules/.bin/drizzle-kit push --config drizzle.rag.config.ts"
   },
   "dependencies": {
     "@openwork-ee/utils": "workspace:*",
