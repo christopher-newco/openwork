@@ -244,18 +244,36 @@ function BrowserPanelContent({
     return () => { active = false; };
   }, [serverBaseUrl, serverToken, workspaceId]);
 
-  const cdpPost = React.useCallback((path: string, body?: Record<string, unknown>) => {
-    if (!serverBaseUrl || !workspaceId) return;
-    void fetch(`${serverBaseUrl}/workspace/${encodeURIComponent(workspaceId)}${path}`, {
+  const cdpPost = React.useCallback(async (path: string, body?: Record<string, unknown>) => {
+    // Resolve connection: use props if available, otherwise read from stored worker settings
+    let base = serverBaseUrl ?? "";
+    let tok = serverToken ?? "";
+    let wsId = workspaceId ?? "";
+    if (!base || !tok || !wsId) {
+      try {
+        const conn = await resolveOpenworkConnection();
+        base = conn.normalizedBaseUrl;
+        tok = conn.resolvedToken;
+        const pw = typeof window !== "undefined"
+          ? (() => { try { return JSON.parse(localStorage.getItem("openwork.predefinedWorker") ?? "{}"); } catch { return {}; } })()
+          : {};
+        wsId = pw.workspaceId ?? wsId;
+      } catch { return; }
+    }
+    if (!base || !wsId) return;
+    void fetch(`${base}/workspace/${encodeURIComponent(wsId)}${path}`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${serverToken ?? ""}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
   }, [serverBaseUrl, serverToken, workspaceId]);
 
   const navigate = React.useCallback(() => {
-    if (isDesktopRuntime()) void getElectronBrowser()?.navigate?.(urlInput);
-    else cdpPost("/browser/navigate", { url: urlInput });
+    if (isDesktopRuntime()) { void getElectronBrowser()?.navigate?.(urlInput); return; }
+    // Ensure the URL has a protocol
+    let url = urlInput.trim();
+    if (url && !url.includes("://")) url = "https://" + url;
+    void cdpPost("/browser/navigate", { url });
   }, [urlInput, cdpPost]);
 
   const back = React.useCallback(() => {
