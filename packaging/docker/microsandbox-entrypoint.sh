@@ -103,25 +103,10 @@ websockify 127.0.0.1:5901 127.0.0.1:5900 &
 printf '%s\n' "- browser: Xvfb :99 + Chromium + x11vnc ready"
 
 # Rename default workspace to Portfolio after the server starts
-(sleep 8 && WS_ID=$(curl -sf -H "Authorization: Bearer $OPENWORK_TOKEN" \
-    "http://127.0.0.1:${OPENWORK_PORT:-8787}/workspaces" | \
-    python3 -c "import sys,json;ws=json.load(sys.stdin).get('items',[]);print(ws[0]['id'] if ws else '')" 2>/dev/null) && \
-  [ -n "$WS_ID" ] && curl -sf -X PATCH \
-    -H "Authorization: Bearer $OPENWORK_HOST_TOKEN" -H "X-OpenWork-Host-Token: $OPENWORK_HOST_TOKEN" \
-    -H "Content-Type: application/json" -d '{"displayName":"Portfolio"}' \
-    "http://127.0.0.1:${OPENWORK_PORT:-8787}/workspaces/$WS_ID/display-name" >/dev/null 2>&1) &
+(sleep 8 && OWPORT="${OPENWORK_PORT:-8787}" && WSID=$(curl -sf -H "Authorization: Bearer $OPENWORK_TOKEN" "http://127.0.0.1:$OWPORT/workspaces" | python3 -c "import sys,json;ws=json.load(sys.stdin).get('items',[]);print(ws[0]['id'] if ws else '')" 2>/dev/null) && [ -n "$WSID" ] && curl -sf -X PATCH -H "Authorization: Bearer $OPENWORK_HOST_TOKEN" -H "X-OpenWork-Host-Token: $OPENWORK_HOST_TOKEN" -H "Content-Type: application/json" -d '{"displayName":"Portfolio"}' "http://127.0.0.1:$OWPORT/workspaces/$WSID/display-name" >/dev/null 2>&1) &
 
 # Navigate Chromium to portfolio.audette.io on startup
-(sleep 10 && curl -sf "http://127.0.0.1:9222/json" >/dev/null 2>&1 && \
-  TARGET_ID=$(curl -sf "http://127.0.0.1:9222/json" | python3 -c \
-    "import sys,json;pages=[t for t in json.load(sys.stdin) if t.get('type')=='page'];print(pages[0]['id'] if pages else '')" 2>/dev/null) && \
-  [ -n "$TARGET_ID" ] && curl -sf -X POST \
-    "http://127.0.0.1:9222/json/runtime/evaluate" \
-    --data-raw "$(python3 -c \"import json;print(json.dumps({'id':1,'method':'Page.navigate','params':{'url':'https://portfolio.audette.io'}}))\")" \
-    "http://127.0.0.1:9222/json/activate/$TARGET_ID" >/dev/null 2>&1 ; \
-  curl -sf "http://127.0.0.1:${OPENWORK_PORT:-8787}/workspace/$(curl -sf -H \"Authorization: Bearer $OPENWORK_TOKEN\" \"http://127.0.0.1:${OPENWORK_PORT:-8787}/workspaces\" | python3 -c \"import sys,json;ws=json.load(sys.stdin).get('items',[]);print(ws[0]['id'] if ws else '')\" 2>/dev/null)/browser/navigate" \
-    -X POST -H "Authorization: Bearer $OPENWORK_TOKEN" -H "Content-Type: application/json" \
-    -d '{"url":"https://portfolio.audette.io"}' >/dev/null 2>&1) &
+(sleep 12 && OWPORT="${OPENWORK_PORT:-8787}" && WSID=$(curl -sf -H "Authorization: Bearer $OPENWORK_TOKEN" "http://127.0.0.1:$OWPORT/workspaces" | python3 -c "import sys,json;ws=json.load(sys.stdin).get('items',[]);print(ws[0]['id'] if ws else '')" 2>/dev/null) && [ -n "$WSID" ] && curl -sf -X POST -H "Authorization: Bearer $OPENWORK_TOKEN" -H "Content-Type: application/json" -d '{"url":"https://portfolio.audette.io"}' "http://127.0.0.1:$OWPORT/workspace/$WSID/browser/navigate" >/dev/null 2>&1) &
 
 # --- global opencode MCP servers (applies to all workspaces) ---
 # Write org-wide MCP entries into the global opencode config before the server
