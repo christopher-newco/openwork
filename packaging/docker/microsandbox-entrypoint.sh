@@ -100,8 +100,7 @@ chromium \
   about:blank &
 # Start x11vnc: listen on localhost only, no password, share across connections
 x11vnc -display :99 -nopw -listen 127.0.0.1 -rfbport 5900 -forever -shared -noxdamage -wait 10 -defer 0 &
-# websockify bridges WebSocket on 5901 to raw VNC on 5900
-websockify 127.0.0.1:5901 127.0.0.1:5900 &
+# websockify no longer needed - server.ts handles WS framing directly
 printf '%s\n' "- browser: Xvfb :99 + Chromium + x11vnc ready"
 
 # Rename default workspace to Portfolio after the server starts
