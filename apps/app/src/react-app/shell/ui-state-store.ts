@@ -126,6 +126,10 @@ function normalizeSidePanelState(value: unknown): SidePanelState {
       if (typeof sessionId !== "string") {
         return [];
       }
+      // Don't restore the browser panel open state — always start closed
+      if (sessionId === "__openwork_browser__") {
+        return [];
+      }
 
       const normalized = normalizeSidePanelItem(panel);
       if (normalized === null && panel !== null) {
