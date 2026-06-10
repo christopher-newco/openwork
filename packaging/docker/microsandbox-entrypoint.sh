@@ -103,12 +103,12 @@ websockify 127.0.0.1:5901 127.0.0.1:5900 &
 printf '%s\n' "- browser: Xvfb :99 + Chromium + x11vnc ready"
 
 # Rename default workspace to Portfolio after the server starts
-(sleep 8 && WS_ID=$(curl -sf -H "Authorization: Bearer $OPENWORK_TOKEN" \\
-    "http://127.0.0.1:${OPENWORK_PORT:-8787}/workspaces" | \\
-    python3 -c "import sys,json;ws=json.load(sys.stdin).get('items',[]);print(ws[0]['id'] if ws else '')" 2>/dev/null) && \\
-  [ -n "$WS_ID" ] && curl -sf -X PATCH \\
-    -H "Authorization: Bearer $OPENWORK_HOST_TOKEN" -H "X-OpenWork-Host-Token: $OPENWORK_HOST_TOKEN" \\
-    -H "Content-Type: application/json" -d '{"displayName":"Portfolio"}' \\
+(sleep 8 && WS_ID=$(curl -sf -H "Authorization: Bearer $OPENWORK_TOKEN" \
+    "http://127.0.0.1:${OPENWORK_PORT:-8787}/workspaces" | \
+    python3 -c "import sys,json;ws=json.load(sys.stdin).get('items',[]);print(ws[0]['id'] if ws else '')" 2>/dev/null) && \
+  [ -n "$WS_ID" ] && curl -sf -X PATCH \
+    -H "Authorization: Bearer $OPENWORK_HOST_TOKEN" -H "X-OpenWork-Host-Token: $OPENWORK_HOST_TOKEN" \
+    -H "Content-Type: application/json" -d '{"displayName":"Portfolio"}' \
     "http://127.0.0.1:${OPENWORK_PORT:-8787}/workspaces/$WS_ID/display-name" >/dev/null 2>&1) &
 
 # Navigate Chromium to portfolio.audette.io on startup
