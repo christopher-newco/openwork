@@ -858,9 +858,10 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
     idleTimeout: 120,
   });
 
-  // VNC WebSocket proxy: authenticates (sync check against config.token)
-  // then TCP-tunnels to websockify on localhost:5901, which handles the
-  // WebSocket handshake and proxies raw VNC to x11vnc on port 5900.
+  // VNC WebSocket proxy: Cloudflare terminates TLS + WS handshake with browser,
+  // then forwards to backend WITHOUT Upgrade header (hop-by-hop). We detect via
+  // Sec-WebSocket-Key (serve-node.ts), complete our own WS handshake (101), then
+  // pipe binary WebSocket frames directly to x11vnc on port 5900.
   server.httpServer.on("upgrade", (req, socket, head) => {
     console.log("[vnc-proxy] upgrade event fired:", req.url);
     const url = new URL(req.url ?? "/", "http://localhost");
@@ -869,39 +870,86 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
       socket.end();
       return;
     }
-    // Synchronous token check — compare against the server config token
     const reqToken = url.searchParams.get("token") ?? "";
     if (!reqToken || reqToken !== config.token) {
       socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
       socket.end();
       return;
     }
-    // Forward the complete HTTP upgrade request to websockify on 5901.
-    // websockify performs the WS handshake and proxies VNC frames.
-    const proxy = net.createConnection(5901, "127.0.0.1");
-    proxy.on("error", (err) => {
-      console.log("[vnc-proxy] websockify connection error:", err.message);
-      if (!socket.destroyed) {
-        socket.write("HTTP/1.1 503 VNC Service Unavailable\r\nConnection: close\r\n\r\n");
-        socket.end();
+
+    // Complete WebSocket handshake — signals to Cloudflare to enter tunnel mode
+    const key = (req.headers as Record<string, string>)["sec-websocket-key"] ?? "";
+    const accept = crypto.createHash("sha1")
+      .update(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
+      .digest("base64");
+    socket.write(
+      "HTTP/1.1 101 Switching Protocols\r\n" +
+      "Upgrade: websocket\r\n" +
+      "Connection: Upgrade\r\n" +
+      `Sec-WebSocket-Accept: ${accept}\r\n` +
+      "Sec-WebSocket-Protocol: binary\r\n" +
+      "\r\n",
+    );
+
+    // Connect directly to x11vnc (raw VNC protocol, no websockify layer)
+    const vnc = net.createConnection(5900, "127.0.0.1");
+
+    // WebSocket frame parser: browser→x11vnc (frames always masked by client)
+    let buf = Buffer.alloc(0);
+    socket.on("data", (chunk: Buffer) => {
+      buf = Buffer.concat([buf, chunk]);
+      while (buf.length >= 2) {
+        const b0 = buf[0]!, b1 = buf[1]!;
+        const masked = (b1 & 0x80) !== 0;
+        let payloadLen = b1 & 0x7f;
+        let headerLen = 2;
+        if (payloadLen === 126) {
+          if (buf.length < 4) break;
+          payloadLen = buf.readUInt16BE(2);
+          headerLen = 4;
+        } else if (payloadLen === 127) {
+          if (buf.length < 10) break;
+          payloadLen = Number(buf.readBigUInt64BE(2));
+          headerLen = 10;
+        }
+        if (masked) headerLen += 4;
+        if (buf.length < headerLen + payloadLen) break;
+        const opcode = b0 & 0x0f;
+        if (opcode === 8) { vnc.destroy(); break; } // close frame
+        if (opcode === 2 || opcode === 0) { // binary or continuation
+          let payload = buf.subarray(headerLen, headerLen + payloadLen);
+          if (masked) {
+            const mask = buf.subarray(headerLen - 4, headerLen);
+            payload = Buffer.from(payload);
+            for (let i = 0; i < payload.length; i++) (payload as Buffer)[i] ^= mask[i % 4]!;
+          }
+          if (!vnc.destroyed) vnc.write(payload);
+        }
+        buf = buf.subarray(headerLen + payloadLen);
       }
     });
-    proxy.once("connect", () => {
-      console.log("[vnc-proxy] forwarding to websockify");
-      let raw = `GET ${req.url} HTTP/1.1\r\n`;
-      for (const [k, v] of Object.entries(req.headers as Record<string, string>)) {
-        raw += `${k}: ${v}\r\n`;
+
+    // x11vnc→browser: wrap raw VNC bytes in WebSocket binary frames (server never masks)
+    vnc.on("data", (data: Buffer) => {
+      const len = data.length;
+      let hdr: Buffer;
+      if (len <= 125) {
+        hdr = Buffer.from([0x82, len]);
+      } else if (len <= 65535) {
+        hdr = Buffer.from([0x82, 126, len >> 8, len & 0xff]);
+      } else {
+        hdr = Buffer.alloc(10);
+        hdr[0] = 0x82; hdr[1] = 127;
+        Buffer.from(new BigUint64Array([BigInt(len)]).buffer).reverse().copy(hdr, 2);
       }
-      raw += "\r\n";
-      proxy.write(raw);
-      if (head.length > 0) proxy.write(head);
-      socket.pipe(proxy);
-      proxy.pipe(socket);
-      socket.on("error", () => proxy.destroy());
-      proxy.on("error", () => { if (!socket.destroyed) socket.destroy(); });
-      socket.on("close", () => proxy.destroy());
-      proxy.on("close", () => { if (!socket.destroyed) socket.destroy(); });
+      if (!socket.destroyed) { socket.write(hdr); socket.write(data); }
     });
+
+    socket.on("error", () => vnc.destroy());
+    socket.on("close", () => vnc.destroy());
+    vnc.on("error", () => { if (!socket.destroyed) socket.destroy(); });
+    vnc.on("close", () => { if (!socket.destroyed) socket.destroy(); });
+    console.log("[vnc-proxy] WS handshake done, piping to x11vnc:5900");
   });
 
   return {
