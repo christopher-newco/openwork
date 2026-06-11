@@ -109,6 +109,27 @@ printf '%s\n' "- browser: Xvfb :99 + Chromium + x11vnc ready"
 # Navigate Chromium to portfolio.audette.io on startup
 (sleep 12 && OWPORT="${OPENWORK_PORT:-8787}" && WSID=$(curl -sf -H "Authorization: Bearer $OPENWORK_TOKEN" "http://127.0.0.1:$OWPORT/workspaces" | python3 -c "import sys,json;ws=json.load(sys.stdin).get('items',[]);print(ws[0]['id'] if ws else '')" 2>/dev/null) && [ -n "$WSID" ] && curl -sf -X POST -H "Authorization: Bearer $OPENWORK_TOKEN" -H "Content-Type: application/json" -d '{"url":"https://portfolio.audette.io"}' "http://127.0.0.1:$OWPORT/workspace/$WSID/browser/navigate" >/dev/null 2>&1) &
 
+# Auto-install Audette Skills and CRREM plugins into every workspace at startup
+# Fetches resolved plugin data from den-api and installs skills via openwork-server
+(sleep 15 && \
+  OWPORT="${OPENWORK_PORT:-8787}" && \
+  DEN_API="${SOAPBOX_DEN_API_URL:-https://api.admin.soapbox.build}" && \
+  ORG_KEY="${SOAPBOX_OPENCODE_CONFIG_KEY:-}" && \
+  [ -n "$ORG_KEY" ] && \
+  WSID=$(curl -sf -H "Authorization: Bearer $OPENWORK_TOKEN" "http://127.0.0.1:$OWPORT/workspaces" | python3 -c "import sys,json;ws=json.load(sys.stdin).get('items',[]);print(ws[0]['id'] if ws else '')" 2>/dev/null) && \
+  [ -n "$WSID" ] && \
+  for PLUGIN_ID in plg_01kttctrteexzayvvtte2198am plg_01kttet2dqexzayyre0whxw5n4; do
+    RESOLVED=$(curl -sf -H "x-api-key: $ORG_KEY" "$DEN_API/v1/plugins/$PLUGIN_ID/resolved" 2>/dev/null)
+    [ -n "$RESOLVED" ] && \
+    curl -sf -X POST \
+      -H "Authorization: Bearer $OPENWORK_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d "{\"resolved\":$RESOLVED,\"marketplaceId\":\"mkt_01ktb1fepmfan9y4p5xq9d7d25\"}" \
+      "http://127.0.0.1:$OWPORT/workspace/$WSID/cloud-plugins" >/dev/null 2>&1 && \
+    printf '%s\n' "- auto-installed plugin: $PLUGIN_ID"
+  done
+) &
+
 # --- global opencode MCP servers (applies to all workspaces) ---
 # Merge org-wide MCPs into the global opencode config on every boot (idempotent).
 # Add new MCPs here; existing keys are overwritten with the latest config.
