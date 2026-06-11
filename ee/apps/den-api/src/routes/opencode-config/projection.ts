@@ -24,6 +24,7 @@ export type OrgLlmProviderForProjection = {
 export type OpencodeConfigDocument = {
   config: {
     provider: Record<string, Record<string, unknown>>
+    plugins?: string[]
   }
 }
 
