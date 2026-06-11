@@ -897,7 +897,10 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
 
     // WebSocket frame parser: browser→x11vnc (frames always masked by client)
     let buf = Buffer.alloc(0);
+    let socketBytesReceived = 0;
     socket.on("data", (chunk: Buffer) => {
+      socketBytesReceived += chunk.length;
+      if (socketBytesReceived === chunk.length) console.log("[vnc-proxy] FIRST data from socket:", chunk.length, "bytes, first byte:", chunk[0]?.toString(16) ?? "none");
       buf = Buffer.concat([buf, chunk]);
       while (buf.length >= 2) {
         const b0 = buf[0]!, b1 = buf[1]!;
@@ -931,7 +934,10 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
     });
 
     // x11vnc→browser: wrap raw VNC bytes in WebSocket binary frames (server never masks)
+    let vncBytesReceived = 0;
     vnc.on("data", (data: Buffer) => {
+      vncBytesReceived += data.length;
+      if (vncBytesReceived === data.length) console.log("[vnc-proxy] FIRST data from x11vnc:", data.length, "bytes:", data.slice(0,20).toString("ascii").replace(/[\x00-\x1f]/g,"."));
       const len = data.length;
       let hdr: Buffer;
       if (len <= 125) {
