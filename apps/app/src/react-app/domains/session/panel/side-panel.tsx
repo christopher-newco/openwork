@@ -41,7 +41,8 @@ import { isDesktopRuntime } from "../../../../app/utils";
 import { resolveOpenworkConnection } from "../../../shell/openwork-connection";
 
 // VNC WebSocket relay (Cloudflare Worker — bypasses nginx WebSocket tunnel issue)
-const VNC_RELAY_URL = "wss://soapbox-vnc-relay.soapboxbuild.workers.dev";
+// Direct custom domain — no Cloudflare proxy layer, WebSocket works bidirectionally
+const VNC_RELAY_URL = "wss://vnc.soapbox.build";
 
 let rfbPromise: Promise<typeof import("@novnc/novnc/core/rfb.js")["default"]> | null = null;
 function loadRFB() {
