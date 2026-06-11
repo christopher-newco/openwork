@@ -39,9 +39,7 @@ import {
 } from "./utils";
 import { isDesktopRuntime } from "../../../../app/utils";
 import { resolveOpenworkConnection } from "../../../shell/openwork-connection";
-// noVNC loaded dynamically at runtime — avoids bundling a 200KB VNC library
-// that's only needed on web deployments with the browser panel active.  return rfbPromise;
-}
+
 
 type SidePanelProps = {
   sessionId: string;
