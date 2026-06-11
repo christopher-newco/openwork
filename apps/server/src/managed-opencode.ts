@@ -93,20 +93,28 @@ export async function createManagedOpencodeServer(options: {
       clearTimeout(timeout);
       reject(error);
     };
+    let started = false;
     child.stdout?.on("data", (chunk) => {
+      if (started) { process.stderr.write(`[opencode] ${chunk}`); return; }
       output += chunk.toString();
       for (const line of output.split("\n")) {
         if (!line.startsWith("opencode server listening")) continue;
         const match = line.match(/on\s+(https?:\/\/[^\s]+)/);
         if (!match?.[1]) return fail(new Error(`Failed to parse OpenCode server URL from: ${line}`));
+        started = true;
         done(match[1]);
       }
     });
     child.stderr?.on("data", (chunk) => {
+      if (started) { process.stderr.write(`[opencode:err] ${chunk}`); return; }
       output += chunk.toString();
     });
     child.once("error", fail);
-    child.once("exit", (code) => fail(new Error(`OpenCode server exited with code ${code}${output.trim() ? `\n${output}` : ""}`)));
+    child.once("exit", (code) => {
+      const msg = `OpenCode server exited with code ${code}${output.trim() ? `\n${output}` : ""}`;
+      if (started) { process.stderr.write(`[opencode] ${msg}\n`); }
+      else { fail(new Error(msg)); }
+    });
   });
 
   return {
