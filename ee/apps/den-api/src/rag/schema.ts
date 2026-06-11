@@ -19,7 +19,7 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core"
-import { vector } from "drizzle-orm/pg-core/columns/vector_extension/vector.js"
+import { vector } from "drizzle-orm/pg-core"
 
 export const documentSourceEnum = pgEnum("document_source", [
   "upload",
