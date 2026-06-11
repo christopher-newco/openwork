@@ -74,9 +74,7 @@ function detectMimeType(filePath: string): string {
   return map[ext] ?? "text/plain"
 }
 
-console.log("[RAG] routes/rag.ts module loaded")
 export function registerRagRoutes<T extends { Variables: OrgRouteVariables }>(app: Hono<T>) {
-  console.log("[RAG] registerRagRoutes called")
   // POST /v1/rag/ingest
   app.post(
     "/v1/rag/ingest",
