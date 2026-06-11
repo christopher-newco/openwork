@@ -174,9 +174,16 @@ export function serve(options: ServeOptions): Promise<ServeResult> {
         nodeReq.headers["connection"] = "upgrade";
       }
       console.log("[serve-node] WebSocket upgrade via request handler:", nodeReq.url);
-      server.emit("upgrade", nodeReq, nodeReq.socket, Buffer.alloc(0));
-      nodeRes.socket?.unref();
-      return;
+      try {
+        server.emit("upgrade", nodeReq, nodeReq.socket, Buffer.alloc(0));
+        console.log("[serve-node] upgrade event emitted successfully");
+        nodeRes.socket?.unref();
+        return;
+      } catch (upgradeErr: unknown) {
+        const msg = upgradeErr instanceof Error ? upgradeErr.message : String(upgradeErr);
+        console.error("[serve-node] upgrade event THREW:", msg);
+        throw upgradeErr; // rethrow to get 500 response with logging
+      }
     }
     nodeRes.on("error", (error) => {
       if (isWriteAfterEndError(error)) {
@@ -187,7 +194,14 @@ export function serve(options: ServeOptions): Promise<ServeResult> {
     });
 
     try {
+      // Log ALL browser VNC requests regardless of method/headers
+      if ((nodeReq.url ?? "").includes("/browser/vnc") || (nodeReq.url ?? "").includes("/ws-test")) {
+        console.log(`[request] ${nodeReq.method} ${nodeReq.url} conn=${nodeReq.headers["connection"]} upgrade=${nodeReq.headers["upgrade"]} wskey=${!!nodeReq.headers["sec-websocket-key"]}`);
+      }
       const webReq = toWebRequest(nodeReq, hostname, boundPort);
+      if ((nodeReq.url ?? "").includes("/browser/vnc")) {
+        console.log("[serve-node] /browser/vnc HTTP hit, upgrade:", nodeReq.headers["upgrade"], "ws-key:", !!nodeReq.headers["sec-websocket-key"]);
+      }
       const webRes = await fetchHandler(webReq);
       await writeWebResponse(webRes, nodeRes);
     } catch (error) {

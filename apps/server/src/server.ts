@@ -863,7 +863,8 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
   // Sec-WebSocket-Key (serve-node.ts), complete our own WS handshake (101), then
   // pipe binary WebSocket frames directly to x11vnc on port 5900.
   server.httpServer.on("upgrade", (req, socket, head) => {
-    console.log("[vnc-proxy] upgrade event fired:", req.url);
+    const wsKey = (req.headers as Record<string, string>)["sec-websocket-key"] ?? "";
+    console.log("[vnc-proxy] upgrade event fired:", req.url, "key:", wsKey.slice(0,8)+"...");
     const url = new URL(req.url ?? "/", "http://localhost");
     if (!/^\/workspace\/[^/]+\/browser\/vnc$/.test(url.pathname)) {
       socket.write("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
@@ -896,7 +897,10 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
 
     // WebSocket frame parser: browser→x11vnc (frames always masked by client)
     let buf = Buffer.alloc(0);
+    let socketBytesReceived = 0;
     socket.on("data", (chunk: Buffer) => {
+      socketBytesReceived += chunk.length;
+      if (socketBytesReceived === chunk.length) console.log("[vnc-proxy] FIRST data from socket:", chunk.length, "bytes, first byte:", chunk[0]?.toString(16) ?? "none");
       buf = Buffer.concat([buf, chunk]);
       while (buf.length >= 2) {
         const b0 = buf[0]!, b1 = buf[1]!;
@@ -930,7 +934,10 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
     });
 
     // x11vnc→browser: wrap raw VNC bytes in WebSocket binary frames (server never masks)
+    let vncBytesReceived = 0;
     vnc.on("data", (data: Buffer) => {
+      vncBytesReceived += data.length;
+      if (vncBytesReceived === data.length) console.log("[vnc-proxy] FIRST data from x11vnc:", data.length, "bytes:", data.slice(0,20).toString("ascii").replace(/[\x00-\x1f]/g,"."));
       const len = data.length;
       let hdr: Buffer;
       if (len <= 125) {
@@ -945,10 +952,11 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
       if (!socket.destroyed) { socket.write(hdr); socket.write(data); }
     });
 
-    socket.on("error", () => vnc.destroy());
-    socket.on("close", () => vnc.destroy());
-    vnc.on("error", () => { if (!socket.destroyed) socket.destroy(); });
-    vnc.on("close", () => { if (!socket.destroyed) socket.destroy(); });
+    socket.on("error", (e: Error) => { console.log("[vnc-proxy] socket ERROR:", e.message); vnc.destroy(); });
+    socket.on("close", (hadErr: boolean) => { console.log("[vnc-proxy] socket CLOSED hadErr=" + hadErr); vnc.destroy(); });
+    vnc.on("error", (e: Error) => { console.log("[vnc-proxy] x11vnc ERROR:", e.message); if (!socket.destroyed) socket.destroy(); });
+    vnc.on("close", () => { console.log("[vnc-proxy] x11vnc CLOSED"); if (!socket.destroyed) socket.destroy(); });
+    vnc.on("connect", () => console.log("[vnc-proxy] x11vnc CONNECTED"));
     console.log("[vnc-proxy] WS handshake done, piping to x11vnc:5900");
   });
 
@@ -4674,6 +4682,18 @@ function createRoutes(
         setTimeout(resolve, 3000);
       }).catch(() => null);
     }
+    return jsonResponse({ ok: true });
+  });
+
+  addRoute(routes, "POST", "/workspace/:id/browser/mouse", "client", async (ctx) => {
+    const body = await readJsonBody(ctx.request);
+    const { x, y } = body as { x: number; y: number };
+    if (typeof x !== "number" || typeof y !== "number") throw new ApiError(400, "invalid_payload", "x and y required");
+    const { execFile } = await import("node:child_process");
+    await new Promise<void>((resolve) => {
+      execFile("xdotool", ["mousemove", "--sync", String(x), String(y), "click", "1"],
+        { env: { ...process.env, DISPLAY: ":99" } }, () => resolve());
+    });
     return jsonResponse({ ok: true });
   });
 

@@ -16,6 +16,7 @@ import { registerOrgSsoRoutes } from "./sso.js"
 import { registerOrgSkillRoutes } from "./skills.js"
 import { registerOrgResourceRoutes } from "./resources.js"
 import { registerOrgTeamRoutes } from "./teams.js"
+import { registerRagRoutes } from "../rag.js"
 
 const LEGACY_ORG_PATH_PREFIX = "/v1/orgs/"
 
@@ -59,6 +60,7 @@ export function registerOrgRoutes<T extends { Variables: OrgRouteVariables }>(ap
   registerOrgResourceRoutes(app)
   registerOrgSkillRoutes(app)
   registerOrgTeamRoutes(app)
+  registerRagRoutes(app)
 
   app.all("/v1/orgs/:orgId/*", async (c) => {
     const url = new URL(c.req.raw.url)

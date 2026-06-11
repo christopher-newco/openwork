@@ -26,7 +26,7 @@ RUN apt-get update \
        ca-certificates curl tar unzip \
        chromium x11vnc xvfb \
        libreoffice-writer libreoffice-calc libreoffice-impress \
-       python3 python3-pip python3-websockify scrot \
+       python3 python3-pip python3-websockify scrot xdotool \
   && rm -rf /var/lib/apt/lists/*
 
 COPY --from=openwork-builder /src/apps/orchestrator/dist/bin/openwork /usr/local/bin/openwork
