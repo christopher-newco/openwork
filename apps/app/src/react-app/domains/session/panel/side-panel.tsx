@@ -188,10 +188,13 @@ function BrowserPanelContent({
         } catch { return; }
       }
       if (!base || !tok || !wsId || cancelled) return;
-      // Use CF Worker relay — bypasses HTTP/2+nginx 101-forwarding issue
+      // Route VNC through the Cloudflare Worker relay on web.
+      // Direct WebSocket to the Render backend fails because Cloudflare's
+      // HTTP/2 proxy strips the Upgrade header. The CF Worker uses HTTP/1.1
+      // for outbound WebSocket fetch, bypassing the issue.
       const VNC_RELAY = "wss://soapbox-vnc-relay.soapboxbuild.workers.dev";
-      const wsUrl = `${VNC_RELAY}/workspace/${encodeURIComponent(wsId)}/browser/vnc?token=${encodeURIComponent(tok)}`;
-      console.log("[browser-panel] noVNC via CF Worker relay:", wsUrl.replace(/token=[^&]+/,"token=***"));
+      const wsUrl = `${VNC_RELAY}/workspace/${encodeURIComponent(wsId)}/browser/vnc?token=${encodeURIComponent(tok)}&serverUrl=${encodeURIComponent(base)}`;
+      console.log("[browser-panel] noVNC via CF relay:", wsUrl.replace(/token=[^&]+/,"token=***").replace(/serverUrl=[^&]+/, `serverUrl=${base.slice(0,30)}...`));
       void loadRFB().then((RFB) => {
         if (cancelled || !container) return;
         rfb = new RFB(container, wsUrl, { wsProtocols: ["binary"] });
