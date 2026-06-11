@@ -188,9 +188,10 @@ function BrowserPanelContent({
         } catch { return; }
       }
       if (!base || !tok || !wsId || cancelled) return;
-      const wsBase = base.replace("https://","wss://").replace("http://","ws://").replace(/[/]+$/,"");
-      const wsUrl = `${wsBase}/workspace/${encodeURIComponent(wsId)}/browser/vnc?token=${encodeURIComponent(tok)}`;
-      console.log("[browser-panel] noVNC connecting to:", wsUrl.replace(/token=[^&]+/,"token=***"));
+      // Use CF Worker relay — bypasses HTTP/2+nginx 101-forwarding issue
+      const VNC_RELAY = "wss://soapbox-vnc-relay.soapboxbuild.workers.dev";
+      const wsUrl = `${VNC_RELAY}/workspace/${encodeURIComponent(wsId)}/browser/vnc?token=${encodeURIComponent(tok)}`;
+      console.log("[browser-panel] noVNC via CF Worker relay:", wsUrl.replace(/token=[^&]+/,"token=***"));
       void loadRFB().then((RFB) => {
         if (cancelled || !container) return;
         rfb = new RFB(container, wsUrl, { wsProtocols: ["binary"] });
