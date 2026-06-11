@@ -40,6 +40,16 @@ import {
 import { isDesktopRuntime } from "../../../../app/utils";
 import { resolveOpenworkConnection } from "../../../shell/openwork-connection";
 
+let rfbPromise: Promise<typeof import("@novnc/novnc/core/rfb.js")["default"]> | null = null;
+function loadRFB() {
+  if (!rfbPromise) {
+    rfbPromise = import(/* @vite-ignore */ "https://cdn.jsdelivr.net/npm/@novnc/novnc@1.7.0/core/rfb.js")
+      .then((m: any) => m.default ?? m)
+      .catch(() => { rfbPromise = null; throw new Error("Failed to load noVNC"); });
+  }
+  return rfbPromise;
+}
+
 // VNC WebSocket relay (Cloudflare Worker — bypasses nginx WebSocket tunnel issue)
 
 
@@ -156,35 +166,40 @@ function BrowserPanelContent({
   const contentRef = React.useRef<HTMLDivElement>(null);
   const urlInputRef = React.useRef<HTMLInputElement>(null);
 
-  const imgRef = React.useRef<HTMLImageElement>(null);
-  const [screenshotSrc, setScreenshotSrc] = React.useState<string>("");
+  const noVncContainerRef = React.useRef<HTMLDivElement>(null);
+  const rfbRef = React.useRef<any>(null);
 
-  // Screenshot polling — works through any proxy, 5fps live view
+  // noVNC WebSocket VNC connection
   React.useEffect(() => {
-    if (isDesktopRuntime()) return;
-    let active = true;
-    const poll = async () => {
-      if (!active) return;
-      try {
-        let base = serverBaseUrl ?? ""; let tok = serverToken ?? ""; let wsId = workspaceId ?? "";
-        if (!base || !tok || !wsId) {
-          const conn = await resolveOpenworkConnection().catch(() => null);
-          if (!conn) { if (active) setTimeout(poll, 1000); return; }
+    if (isDesktopRuntime() || !noVncContainerRef.current) return;
+    const container = noVncContainerRef.current;
+    let rfb: any = null;
+    let cancelled = false;
+    const connect = async () => {
+      let base = serverBaseUrl ?? ""; let tok = serverToken ?? ""; let wsId = workspaceId ?? "";
+      if (!base || !tok || !wsId) {
+        try {
+          const conn = await resolveOpenworkConnection();
           base = conn.normalizedBaseUrl; tok = conn.resolvedToken;
-          const pw = typeof window !== "undefined" ? (() => { try { return JSON.parse(localStorage.getItem("openwork.predefinedWorker") ?? "{}"); } catch { return {}; } })() : {};
+          const pw = typeof window !== "undefined"
+            ? (() => { try { return JSON.parse(localStorage.getItem("openwork.predefinedWorker") ?? "{}"); } catch { return {}; } })()
+            : {};
           wsId = pw.workspaceId ?? wsId;
-        }
-        if (!base || !tok || !wsId || !active) return;
-        const res = await fetch(`${base}/workspace/${encodeURIComponent(wsId)}/browser/screenshot`, { headers: { Authorization: `Bearer ${tok}` } });
-        if (!res.ok) throw new Error(`${res.status}`);
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        if (active) setScreenshotSrc(prev => { if (prev) URL.revokeObjectURL(prev); return url; });
-      } catch { /* ignore */ }
-      if (active) setTimeout(poll, 200);
+        } catch { return; }
+      }
+      if (!base || !tok || !wsId || cancelled) return;
+      const wsBase = base.replace("https://","wss://").replace("http://","ws://").replace(/[/]+$/,"");
+      const wsUrl = `${wsBase}/workspace/${encodeURIComponent(wsId)}/browser/vnc?token=${encodeURIComponent(tok)}`;
+      console.log("[browser-panel] noVNC connecting to:", wsUrl.replace(/token=[^&]+/,"token=***"));
+      void loadRFB().then((RFB) => {
+        if (cancelled || !container) return;
+        rfb = new RFB(container, wsUrl, { wsProtocols: ["binary"] });
+        rfb.scaleViewport = true;
+        rfbRef.current = rfb;
+      });
     };
-    void poll();
-    return () => { active = false; };
+    void connect();
+    return () => { cancelled = true; rfb?.disconnect(); rfbRef.current = null; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const shownRef = React.useRef(false);
   const boundsFrameRef = React.useRef<number | null>(null);
@@ -466,21 +481,7 @@ function BrowserPanelContent({
       <div className="min-h-0 flex-1 overflow-hidden">
         {isAvailable
           ? <div ref={contentRef} className="h-full overflow-hidden" />
-          : (
-            <div className="relative h-full overflow-hidden bg-black cursor-crosshair"
-              onClick={async (e) => {
-                if (!imgRef.current) return;
-                const rect = imgRef.current.getBoundingClientRect();
-                const x = Math.round((e.clientX - rect.left) * (1280 / rect.width));
-                const y = Math.round((e.clientY - rect.top) * (800 / rect.height));
-                void cdpPost("/browser/mouse", { x, y, type: "click" });
-              }}
-            >
-              {screenshotSrc
-                ? <img ref={imgRef} src={screenshotSrc} alt="Browser" draggable={false} className="h-full w-full object-contain select-none" />
-                : <div className="flex h-full items-center justify-center text-xs text-white/40">Connecting to browser…</div>}
-            </div>
-          )}
+          : <div ref={noVncContainerRef} className="h-full overflow-hidden bg-black" />}
       </div>
     </>
   );
