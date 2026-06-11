@@ -71,6 +71,34 @@ else
   printf '%s\n' "- opencode org-config: SOAPBOX_OPENCODE_CONFIG_KEY unset, skipping seed"
 fi
 
+# --- Tailscale (optional SSH access) ---
+if [ -n "${TS_AUTHKEY:-}" ]; then
+  # /var/lib/tailscale required for SSH host key storage
+  mkdir -p /var/lib/tailscale
+  # Supervisor loop: restart tailscaled if it exits
+  (while true; do
+    tailscaled --tun=userspace-networking \
+      --statedir=/var/lib/tailscale \
+      --socket=/tmp/tailscaled.sock >>/tmp/tailscaled.log 2>&1
+    echo "tailscaled exited ($?), restarting in 3s..." >>/tmp/tailscaled.log
+    sleep 3
+  done) &
+  sleep 3
+  tailscale --socket=/tmp/tailscaled.sock up \
+    --authkey="$TS_AUTHKEY" \
+    --hostname="openwork-worker-$(hostname)" \
+    --ssh \
+    --accept-routes=false \
+    >/tmp/tailscale-up.log 2>&1 && \
+    printf '%s\n' "- tailscale: up, SSH enabled ($(tailscale --socket=/tmp/tailscaled.sock ip -4 2>/dev/null))" || \
+    printf '%s\n' "- tailscale: up failed (see /tmp/tailscale-up.log)"
+  # Copy logs to persistent workspace volume for debugging
+  cp /tmp/tailscale-up.log "$OPENWORK_WORKSPACE/.tailscale-up.log" 2>/dev/null || true
+  cp /tmp/tailscaled.log "$OPENWORK_WORKSPACE/.tailscaled.log" 2>/dev/null || true
+else
+  printf '%s\n' "- tailscale: TS_AUTHKEY unset, skipping"
+fi
+
 # --- built-in browser (Chromium via Xvfb + x11vnc for noVNC streaming) ---
 # Xvfb provides a virtual X display; Chromium runs headful on it for full CDP
 # and interactive control; x11vnc serves the display over VNC (TCP 5900) which

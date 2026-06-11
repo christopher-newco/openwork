@@ -28,7 +28,12 @@ RUN apt-get update \
        chromium x11vnc xvfb \
        libreoffice-writer libreoffice-calc libreoffice-impress \
        python3 python3-pip python3-websockify scrot xdotool xcompmgr \
-  && rm -rf /var/lib/apt/lists/*
+  && rm -rf /var/lib/apt/lists/* \
+  && curl -fsSL "https://pkgs.tailscale.com/stable/tailscale_1.82.5_amd64.tgz" -o /tmp/tailscale.tgz \
+  && tar -xzf /tmp/tailscale.tgz -C /tmp \
+  && install -m 0755 /tmp/tailscale_1.82.5_amd64/tailscale /usr/local/bin/tailscale \
+  && install -m 0755 /tmp/tailscale_1.82.5_amd64/tailscaled /usr/local/bin/tailscaled \
+  && rm -rf /tmp/tailscale*
 
 COPY --from=openwork-builder /src/apps/orchestrator/dist/bin/openwork /usr/local/bin/openwork
 COPY --from=openwork-builder /src/apps/server/dist/bin/openwork-server /usr/local/bin/openwork-server
