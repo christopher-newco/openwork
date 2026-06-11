@@ -112,7 +112,8 @@ printf '%s\n' "- browser: Xvfb :99 + Chromium + x11vnc ready"
 (sleep 12 && OWPORT="${OPENWORK_PORT:-8787}" && WSID=$(curl -sf -H "Authorization: Bearer $OPENWORK_TOKEN" "http://127.0.0.1:$OWPORT/workspaces" | python3 -c "import sys,json;ws=json.load(sys.stdin).get('items',[]);print(ws[0]['id'] if ws else '')" 2>/dev/null) && [ -n "$WSID" ] && curl -sf -X POST -H "Authorization: Bearer $OPENWORK_TOKEN" -H "Content-Type: application/json" -d '{"url":"https://portfolio.audette.io"}' "http://127.0.0.1:$OWPORT/workspace/$WSID/browser/navigate" >/dev/null 2>&1) &
 
 # Auto-install Audette Skills and CRREM plugins into every workspace at startup
-# Fetches resolved plugin data from den-api and installs skills via openwork-server
+# Fetches plugin metadata + resolved memberships from den-api, builds the correct
+# {plugin, memberships} body, and installs via openwork-server cloud-plugins API.
 (sleep 15 && \
   OWPORT="${OPENWORK_PORT:-8787}" && \
   DEN_API="${SOAPBOX_DEN_API_URL:-https://api.admin.soapbox.build}" && \
@@ -121,12 +122,28 @@ printf '%s\n' "- browser: Xvfb :99 + Chromium + x11vnc ready"
   WSID=$(curl -sf -H "Authorization: Bearer $OPENWORK_TOKEN" "http://127.0.0.1:$OWPORT/workspaces" | python3 -c "import sys,json;ws=json.load(sys.stdin).get('items',[]);print(ws[0]['id'] if ws else '')" 2>/dev/null) && \
   [ -n "$WSID" ] && \
   for PLUGIN_ID in plg_01kttctrteexzayvvtte2198am plg_01kttet2dqexzayyre0whxw5n4; do
-    RESOLVED=$(curl -sf -H "x-api-key: $ORG_KEY" "$DEN_API/v1/plugins/$PLUGIN_ID/resolved" 2>/dev/null)
-    [ -n "$RESOLVED" ] && \
+    PLUGIN_META=$(curl -sf -H "x-api-key: $ORG_KEY" "$DEN_API/v1/plugins/$PLUGIN_ID" 2>/dev/null)
+    PLUGIN_ITEMS=$(curl -sf -H "x-api-key: $ORG_KEY" "$DEN_API/v1/plugins/$PLUGIN_ID/resolved" 2>/dev/null)
+    [ -n "$PLUGIN_META" ] && [ -n "$PLUGIN_ITEMS" ] && \
+    BODY=$(python3 -c "
+import sys,json,os
+meta=json.loads(os.environ['PLUGIN_META']).get('item',{})
+items=json.loads(os.environ['PLUGIN_ITEMS']).get('items',[])
+ext=meta.get('extension',{})
+body={
+  'resolved':{
+    'plugin':{'id':meta['id'],'name':ext.get('name') or meta.get('description') or meta['id'],'description':meta.get('description'),'updatedAt':meta.get('updatedAt')},
+    'memberships':[{'configObjectId':i['configObjectId'],'configObject':i.get('configObject')} for i in items if i.get('configObjectId')]
+  },
+  'marketplaceId':'mkt_01ktb1fepmfan9y4p5xq9d7d25'
+}
+print(json.dumps(body))
+" PLUGIN_META="$PLUGIN_META" PLUGIN_ITEMS="$PLUGIN_ITEMS" 2>/dev/null) && \
+    [ -n "$BODY" ] && \
     curl -sf -X POST \
       -H "Authorization: Bearer $OPENWORK_TOKEN" \
       -H "Content-Type: application/json" \
-      -d "{\"resolved\":$RESOLVED,\"marketplaceId\":\"mkt_01ktb1fepmfan9y4p5xq9d7d25\"}" \
+      -d "$BODY" \
       "http://127.0.0.1:$OWPORT/workspace/$WSID/cloud-plugins" >/dev/null 2>&1 && \
     printf '%s\n' "- auto-installed plugin: $PLUGIN_ID"
   done
