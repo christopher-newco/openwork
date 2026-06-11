@@ -1,3 +1,4 @@
+// Build: 2026-06-11T02:08:13Z
 import "./load-env.js"
 import { createDenTypeId } from "@openwork-ee/utils/typeid"
 import { swaggerUI } from "@hono/swagger-ui"
