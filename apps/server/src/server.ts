@@ -896,6 +896,8 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
     const vnc = net.createConnection(5900, "127.0.0.1");
 
     // WebSocket frame parser: browser→x11vnc (frames always masked by client)
+    // CRITICAL: socket from upgrade event is paused; must resume to receive data
+    socket.resume();
     let buf = Buffer.alloc(0);
     let socketBytesReceived = 0;
     socket.on("data", (chunk: Buffer) => {
