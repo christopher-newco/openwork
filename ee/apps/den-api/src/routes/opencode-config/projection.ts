@@ -95,5 +95,5 @@ export function projectOrgProvidersToOpencodeConfig(
     }
   }
 
-  return { config: { provider, plugins: ["soapboxbuild/audette-skills", "soapboxbuild/crrem-skills"] } }
+  return { config: { provider } }
 }
