@@ -4685,6 +4685,18 @@ function createRoutes(
     return jsonResponse({ ok: true });
   });
 
+  addRoute(routes, "POST", "/workspace/:id/browser/mouse", "client", async (ctx) => {
+    const body = await readJsonBody(ctx.request);
+    const { x, y } = body as { x: number; y: number };
+    if (typeof x !== "number" || typeof y !== "number") throw new ApiError(400, "invalid_payload", "x and y required");
+    const { execFile } = await import("node:child_process");
+    await new Promise<void>((resolve) => {
+      execFile("xdotool", ["mousemove", "--sync", String(x), String(y), "click", "1"],
+        { env: { ...process.env, DISPLAY: ":99" } }, () => resolve());
+    });
+    return jsonResponse({ ok: true });
+  });
+
   addRoute(routes, "GET", "/workspace/:id/browser/state", "client", async (ctx) => {
     const targets = await fetch("http://127.0.0.1:9222/json").then((r) => r.json()).catch(() => []);
     const page = Array.isArray(targets) ? targets.find((t: any) => t.type === "page") : null;

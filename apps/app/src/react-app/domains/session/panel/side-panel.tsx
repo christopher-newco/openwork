@@ -40,15 +40,7 @@ import {
 import { isDesktopRuntime } from "../../../../app/utils";
 import { resolveOpenworkConnection } from "../../../shell/openwork-connection";
 // noVNC loaded dynamically at runtime — avoids bundling a 200KB VNC library
-// that's only needed on web deployments with the browser panel active.
-let rfbPromise: Promise<typeof import("@novnc/novnc/core/rfb.js")["default"]> | null = null;
-function loadRFB() {
-  if (!rfbPromise) {
-    rfbPromise = import(/* @vite-ignore */ "https://cdn.jsdelivr.net/npm/@novnc/novnc@1.7.0/core/rfb.js")
-      .then((m: any) => m.default ?? m)
-      .catch(() => { rfbPromise = null; throw new Error("Failed to load noVNC"); });
-  }
-  return rfbPromise;
+// that's only needed on web deployments with the browser panel active.  return rfbPromise;
 }
 
 type SidePanelProps = {
@@ -163,52 +155,43 @@ function BrowserPanelContent({
   const contentRef = React.useRef<HTMLDivElement>(null);
   const urlInputRef = React.useRef<HTMLInputElement>(null);
 
-  const noVncContainerRef = React.useRef<HTMLDivElement>(null);
-  const rfbRef = React.useRef<any>(null);
+  const imgRef = React.useRef<HTMLImageElement>(null);
+  const [screenshotSrc, setScreenshotSrc] = React.useState<string>("");
 
-  // noVNC WebSocket VNC connection for live interactive browser on web.
-  // Falls back to resolving the connection from stored settings if props are missing,
-  // so the browser panel works even when no session is open.
+  // Screenshot polling for live browser display (100ms ≈ 10fps)
+  // Works through Cloudflare/nginx without WebSocket requirements
   React.useEffect(() => {
-    if (isDesktopRuntime() || !noVncContainerRef.current) return;
-    const container = noVncContainerRef.current;
-    let rfb: any = null;
-    let cancelled = false;
-
-    const connect = async () => {
-      // Use passed props if available; otherwise read from stored worker settings
-      let base = serverBaseUrl ?? "";
-      let token = serverToken ?? "";
-      let wsId = workspaceId ?? "";
-      if (!base || !token || !wsId) {
-        try {
-          const conn = await resolveOpenworkConnection();
+    if (isDesktopRuntime()) return;
+    let active = true;
+    const poll = async () => {
+      if (!active) return;
+      try {
+        let base = serverBaseUrl ?? "";
+        let tok = serverToken ?? "";
+        let wsId = workspaceId ?? "";
+        if (!base || !tok || !wsId) {
+          const conn = await resolveOpenworkConnection().catch(() => null);
+          if (!conn) { if (active) setTimeout(poll, 500); return; }
           base = conn.normalizedBaseUrl;
-          token = conn.resolvedToken;
-          // workspaceId comes from the predefined worker entry in localStorage
+          tok = conn.resolvedToken;
           const pw = typeof window !== "undefined"
             ? (() => { try { return JSON.parse(localStorage.getItem("openwork.predefinedWorker") ?? "{}"); } catch { return {}; } })()
             : {};
           wsId = pw.workspaceId ?? wsId;
-        } catch { return; }
-      }
-      if (!base || !token || !wsId || cancelled) return;
-      const wsBase = base.replace("https://","wss://").replace("http://","ws://").replace(/[/]+$/,"");
-      const wsUrl = `${wsBase}/workspace/${encodeURIComponent(wsId)}/browser/vnc?token=${encodeURIComponent(token)}`;
-      console.log("[browser-panel] connecting noVNC to:", wsUrl.replace(/token=[^&]+/, "token=***"));
-      void loadRFB().then((RFB) => {
-        if (cancelled || !container) return;
-        rfb = new RFB(container, wsUrl, { wsProtocols: ["binary"] });
-        rfb.scaleViewport = true;
-        rfbRef.current = rfb;
-      });
+        }
+        if (!base || !tok || !wsId || !active) return;
+        const res = await fetch(`${base}/workspace/${encodeURIComponent(wsId)}/browser/screenshot`, {
+          headers: { Authorization: `Bearer ${tok}` },
+        });
+        if (!res.ok) throw new Error(`${res.status}`);
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        if (active) setScreenshotSrc(prev => { if (prev) URL.revokeObjectURL(prev); return url; });
+      } catch { /* ignore */ }
+      if (active) setTimeout(poll, 100);
     };
-    void connect();
-    return () => {
-      cancelled = true;
-      rfb?.disconnect();
-      rfbRef.current = null;
-    };
+    void poll();
+    return () => { active = false; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const shownRef = React.useRef(false);
   const boundsFrameRef = React.useRef<number | null>(null);
@@ -490,7 +473,25 @@ function BrowserPanelContent({
       <div className="min-h-0 flex-1 overflow-hidden">
         {isAvailable
           ? <div ref={contentRef} className="h-full overflow-hidden" />
-          : <div ref={noVncContainerRef} className="h-full overflow-hidden bg-black" />}
+          : (
+            <div className="relative h-full overflow-hidden bg-black flex items-center justify-center"
+              onClick={(e) => {
+                if (!imgRef.current) return;
+                const rect = imgRef.current.getBoundingClientRect();
+                const scaleX = 1280 / rect.width;
+                const scaleY = 800 / rect.height;
+                const x = Math.round((e.clientX - rect.left) * scaleX);
+                const y = Math.round((e.clientY - rect.top) * scaleY);
+                void cdpPost("/browser/mouse", { x, y, type: "click" });
+              }}
+              style={{ cursor: "default" }}
+            >
+              {screenshotSrc
+                ? <img ref={imgRef} src={screenshotSrc} alt="Browser" draggable={false}
+                    className="h-full w-full object-contain" style={{ imageRendering: "pixelated" }} />
+                : <div className="text-xs text-white/40">Connecting to browser…</div>}
+            </div>
+          )}
       </div>
     </>
   );
