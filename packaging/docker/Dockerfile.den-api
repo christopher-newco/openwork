@@ -19,6 +19,7 @@ COPY packages/types /app/packages/types
 COPY packages/email /app/packages/email
 COPY ee/packages/utils /app/ee/packages/utils
 COPY ee/packages/den-db /app/ee/packages/den-db
+ARG CACHE_BUST=20260611024508
 COPY ee/apps/den-api /app/ee/apps/den-api
 
 WORKDIR /app/ee/apps/den-api

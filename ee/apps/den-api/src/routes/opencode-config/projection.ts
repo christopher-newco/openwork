@@ -24,6 +24,7 @@ export type OrgLlmProviderForProjection = {
 export type OpencodeConfigDocument = {
   config: {
     provider: Record<string, Record<string, unknown>>
+    plugins?: string[]
   }
 }
 
@@ -94,5 +95,5 @@ export function projectOrgProvidersToOpencodeConfig(
     }
   }
 
-  return { config: { provider } }
+  return { config: { provider, plugins: ["soapboxbuild/audette-skills", "soapboxbuild/crrem-skills"] } }
 }

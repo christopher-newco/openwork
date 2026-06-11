@@ -111,41 +111,54 @@ printf '%s\n' "- browser: Xvfb :99 + Chromium + x11vnc ready"
 # Navigate Chromium to portfolio.audette.io on startup
 (sleep 12 && OWPORT="${OPENWORK_PORT:-8787}" && WSID=$(curl -sf -H "Authorization: Bearer $OPENWORK_TOKEN" "http://127.0.0.1:$OWPORT/workspaces" | python3 -c "import sys,json;ws=json.load(sys.stdin).get('items',[]);print(ws[0]['id'] if ws else '')" 2>/dev/null) && [ -n "$WSID" ] && curl -sf -X POST -H "Authorization: Bearer $OPENWORK_TOKEN" -H "Content-Type: application/json" -d '{"url":"https://portfolio.audette.io"}' "http://127.0.0.1:$OWPORT/workspace/$WSID/browser/navigate" >/dev/null 2>&1) &
 
+# Auto-install Audette Skills and CRREM plugins into every workspace at startup
+# Fetches resolved plugin data from den-api and installs skills via openwork-server
+(sleep 15 && \
+  OWPORT="${OPENWORK_PORT:-8787}" && \
+  DEN_API="${SOAPBOX_DEN_API_URL:-https://api.admin.soapbox.build}" && \
+  ORG_KEY="${SOAPBOX_OPENCODE_CONFIG_KEY:-}" && \
+  [ -n "$ORG_KEY" ] && \
+  WSID=$(curl -sf -H "Authorization: Bearer $OPENWORK_TOKEN" "http://127.0.0.1:$OWPORT/workspaces" | python3 -c "import sys,json;ws=json.load(sys.stdin).get('items',[]);print(ws[0]['id'] if ws else '')" 2>/dev/null) && \
+  [ -n "$WSID" ] && \
+  for PLUGIN_ID in plg_01kttctrteexzayvvtte2198am plg_01kttet2dqexzayyre0whxw5n4; do
+    RESOLVED=$(curl -sf -H "x-api-key: $ORG_KEY" "$DEN_API/v1/plugins/$PLUGIN_ID/resolved" 2>/dev/null)
+    [ -n "$RESOLVED" ] && \
+    curl -sf -X POST \
+      -H "Authorization: Bearer $OPENWORK_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d "{\"resolved\":$RESOLVED,\"marketplaceId\":\"mkt_01ktb1fepmfan9y4p5xq9d7d25\"}" \
+      "http://127.0.0.1:$OWPORT/workspace/$WSID/cloud-plugins" >/dev/null 2>&1 && \
+    printf '%s\n' "- auto-installed plugin: $PLUGIN_ID"
+  done
+) &
+
 # --- global opencode MCP servers (applies to all workspaces) ---
-# Write org-wide MCP entries into the global opencode config before the server
-# starts. Seeded on every boot so additions here are always in effect.
+# Merge org-wide MCPs into the global opencode config on every boot (idempotent).
+# Add new MCPs here; existing keys are overwritten with the latest config.
 OPENCODE_GLOBAL_CONFIG_DIR="$XDG_CONFIG_HOME/opencode"
 OPENCODE_GLOBAL_CONFIG="$OPENCODE_GLOBAL_CONFIG_DIR/opencode.jsonc"
+SOAPBOX_MEMORY_API_KEY="${SOAPBOX_MEMORY_API_KEY:-hs_KbxDNoQUY1IiBrvhEbNEkHkO1mwedmj}"
 mkdir -p "$OPENCODE_GLOBAL_CONFIG_DIR"
-# Only write if the file does not yet contain the audette entry.
-if ! grep -q '"audette"' "$OPENCODE_GLOBAL_CONFIG" 2>/dev/null; then
-  EXISTING=""
-  if [ -f "$OPENCODE_GLOBAL_CONFIG" ]; then
-    EXISTING=$(cat "$OPENCODE_GLOBAL_CONFIG")
-  fi
-  if [ -z "$EXISTING" ] || [ "$EXISTING" = "{}" ]; then
-    printf '{"mcp":{"audette":{"type":"remote","url":"https://mcp-server.prod.audette.io/mcp"}}}
-'       > "$OPENCODE_GLOBAL_CONFIG"
-  else
-    # File exists with other content — append the mcp block by rewriting.
-    # Use a simple approach: inject audette into whatever is already there via a
-    # temporary node/bun one-liner if available, otherwise overwrite safely.
-    if command -v node >/dev/null 2>&1; then
-      node -e "
-        const fs=require('fs');
-        let cfg={};
-        try{cfg=JSON.parse(fs.readFileSync('$OPENCODE_GLOBAL_CONFIG','utf8'));}catch(e){}
-        if(!cfg.mcp) cfg.mcp={};
-        cfg.mcp.audette={type:'remote',url:'https://mcp-server.prod.audette.io/mcp'};
-        fs.writeFileSync('$OPENCODE_GLOBAL_CONFIG',JSON.stringify(cfg,null,2));
-      " 2>/dev/null || true
-    fi
-  fi
-  printf '%s
-' "- org MCP: audette seeded in global opencode config"
+if command -v node >/dev/null 2>&1; then
+  OPENCODE_GLOBAL_CONFIG="$OPENCODE_GLOBAL_CONFIG" \
+  SOAPBOX_MEMORY_API_KEY="$SOAPBOX_MEMORY_API_KEY" \
+  node -e '
+    const fs=require("fs");
+    const cfgPath=process.env.OPENCODE_GLOBAL_CONFIG;
+    let cfg={};
+    try{cfg=JSON.parse(fs.readFileSync(cfgPath,"utf8"));}catch(e){}
+    if(!cfg.mcp) cfg.mcp={};
+    cfg.mcp.audette={type:"remote",url:"https://mcp-server.prod.audette.io/mcp"};
+    const memKey=process.env.SOAPBOX_MEMORY_API_KEY;
+    if(memKey){
+      cfg.mcp["soapbox-memory"]={type:"remote",url:"https://soapbox-memory-production.up.railway.app/mcp/",headers:{Authorization:"Bearer "+memKey}};
+    }
+    fs.writeFileSync(cfgPath,JSON.stringify(cfg,null,2));
+  ' 2>/dev/null || true
+  printf '%s\n' "- org MCPs seeded: audette, soapbox-memory"
 else
-  printf '%s
-' "- org MCP: audette already present in global opencode config"
+  printf '{"mcp":{"audette":{"type":"remote","url":"https://mcp-server.prod.audette.io/mcp"}}}\n' > "$OPENCODE_GLOBAL_CONFIG"
+  printf '%s\n' "- org MCP: audette seeded (node unavailable, soapbox-memory skipped)"
 fi
 
 exec openwork-server \
