@@ -82,8 +82,8 @@ export async function searchDocuments(params: SearchParams): Promise<SearchResul
       UNION ALL
       SELECT
         k.chunk_id,
-        s2.content,
-        s2.document_id,
+        dc.content,
+        s2.id AS document_id,
         s2.filename,
         s2.workspace_id,
         0.3 / (60.0 + k.rank) AS fused_score
@@ -93,13 +93,7 @@ export async function searchDocuments(params: SearchParams): Promise<SearchResul
       LEFT JOIN semantic s ON s.chunk_id = k.chunk_id
       WHERE s.chunk_id IS NULL
     )
-    SELECT DISTINCT ON (chunk_id)
-      chunk_id,
-      content,
-      document_id,
-      filename,
-      workspace_id,
-      MAX(fused_score) AS score
+    SELECT chunk_id, content, document_id, filename, workspace_id, MAX(fused_score) AS score
     FROM fused
     GROUP BY chunk_id, content, document_id, filename, workspace_id
     ORDER BY score DESC
