@@ -1,3 +1,4 @@
+// RAG module — requires PostgreSQL with pgvector extension
 import pg from "pg"
 import { drizzle } from "drizzle-orm/node-postgres"
 import { env } from "../env.js"
