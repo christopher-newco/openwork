@@ -863,7 +863,8 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
   // Sec-WebSocket-Key (serve-node.ts), complete our own WS handshake (101), then
   // pipe binary WebSocket frames directly to x11vnc on port 5900.
   server.httpServer.on("upgrade", (req, socket, head) => {
-    console.log("[vnc-proxy] upgrade event fired:", req.url);
+    const wsKey = (req.headers as Record<string, string>)["sec-websocket-key"] ?? "";
+    console.log("[vnc-proxy] upgrade event fired:", req.url, "key:", wsKey.slice(0,8)+"...");
     const url = new URL(req.url ?? "/", "http://localhost");
     if (!/^\/workspace\/[^/]+\/browser\/vnc$/.test(url.pathname)) {
       socket.write("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
