@@ -209,7 +209,7 @@ function BrowserPanelContent({
       rfb?.disconnect();
       rfbRef.current = null;
     };
-  }, [serverBaseUrl, serverToken, workspaceId]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const shownRef = React.useRef(false);
   const boundsFrameRef = React.useRef<number | null>(null);
   const lastBoundsRef = React.useRef<{ x: number; y: number; width: number; height: number } | null>(null);
@@ -242,7 +242,7 @@ function BrowserPanelContent({
     };
     void poll();
     return () => { active = false; };
-  }, [serverBaseUrl, serverToken, workspaceId]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const cdpPost = React.useCallback(async (path: string, body?: Record<string, unknown>) => {
     // Resolve connection: use props if available, otherwise read from stored worker settings
@@ -266,7 +266,7 @@ function BrowserPanelContent({
       headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
-  }, [serverBaseUrl, serverToken, workspaceId]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const navigate = React.useCallback(() => {
     if (isDesktopRuntime()) { void getElectronBrowser()?.navigate?.(urlInput); return; }
