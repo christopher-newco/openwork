@@ -80,12 +80,14 @@ Xvfb :99 -screen 0 1280x800x24 -ac +extension GLX +render -noreset &
 XVFB_PID=$!
 # Wait briefly for Xvfb to be ready
 sleep 1
-# Start Chromium in non-headless mode (needed for xvfb capture)
+# Start compositor to ensure window contents are painted to X framebuffer
+xcompmgr &
+sleep 0.5
+
+# Start Chromium (no --disable-gpu so it uses X11 rendering path)
 chromium \
   --no-sandbox \
-  --disable-gpu \
   --disable-gpu-compositing \
-  --disable-software-rasterizer=0 \
   --disable-dev-shm-usage \
   --disable-extensions \
   --disable-notifications \
