@@ -945,10 +945,11 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
       if (!socket.destroyed) { socket.write(hdr); socket.write(data); }
     });
 
-    socket.on("error", () => vnc.destroy());
-    socket.on("close", () => vnc.destroy());
-    vnc.on("error", () => { if (!socket.destroyed) socket.destroy(); });
-    vnc.on("close", () => { if (!socket.destroyed) socket.destroy(); });
+    socket.on("error", (e: Error) => { console.log("[vnc-proxy] socket ERROR:", e.message); vnc.destroy(); });
+    socket.on("close", (hadErr: boolean) => { console.log("[vnc-proxy] socket CLOSED hadErr=" + hadErr); vnc.destroy(); });
+    vnc.on("error", (e: Error) => { console.log("[vnc-proxy] x11vnc ERROR:", e.message); if (!socket.destroyed) socket.destroy(); });
+    vnc.on("close", () => { console.log("[vnc-proxy] x11vnc CLOSED"); if (!socket.destroyed) socket.destroy(); });
+    vnc.on("connect", () => console.log("[vnc-proxy] x11vnc CONNECTED"));
     console.log("[vnc-proxy] WS handshake done, piping to x11vnc:5900");
   });
 
